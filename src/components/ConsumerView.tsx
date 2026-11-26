@@ -12,7 +12,7 @@ import {
   ExternalLink,
   Package,
 } from 'lucide-react';
-import { Product, Producer, AppUser, ProducerStory, ReviewItem } from '../types';
+import { Product, Producer, AppUser, ProducerStory, ReviewItem, Order } from '../types';
 import { UserAddressConfig, StorageService } from '../services/storage';
 import { StoriesBar } from './StoriesBar';
 import { StoryViewerModal } from './StoryViewerModal';
@@ -26,6 +26,7 @@ interface ConsumerViewProps {
   products: Product[];
   producers: Producer[];
   reviews: ReviewItem[];
+  orders?: Order[];
   favorites: string[];
   onToggleFavorite: (productId: string) => void;
   onOpenProductDetail: (product: Product) => void;
@@ -40,6 +41,7 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
   products,
   producers,
   reviews,
+  orders = [],
   favorites,
   onToggleFavorite,
   onOpenProductDetail,
@@ -75,6 +77,7 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
     { id: 'estetica_beleza', name: 'Estética e beleza' },
     { id: 'vestuario', name: 'Vestuário' },
     { id: 'artesanato', name: 'Artesanato' },
+    { id: 'outros', name: 'Outros' },
   ];
 
   const filteredProducts = products.filter((p) => {
@@ -84,7 +87,8 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
       const matchTitle = (p.title || '').toLowerCase().includes(q);
       const matchDesc = (p.description || '').toLowerCase().includes(q);
       const matchFarm = (p.producerFarm || p.producerName || '').toLowerCase().includes(q);
-      if (!matchTitle && !matchDesc && !matchFarm) return false;
+      const matchCustomCat = (p.customCategory || '').toLowerCase().includes(q);
+      if (!matchTitle && !matchDesc && !matchFarm && !matchCustomCat) return false;
     }
     return true;
   });
@@ -496,6 +500,7 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
           producers={producers}
           products={products}
           reviews={reviews}
+          orders={orders}
           onOpenProducerProfile={onOpenProducerProfile}
           onOpenProductDetail={onOpenProductDetail}
           onReportProducer={onReportProducer}

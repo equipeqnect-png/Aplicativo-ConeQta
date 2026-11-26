@@ -19,7 +19,7 @@ Toda a infraestrutura de banco de dados, autenticação, tabelas, políticas de 
 3. Abra o arquivo `supabase/schema.sql` gerado neste projeto, copie todo o seu conteúdo e cole no editor do Supabase.
 4. Clique no botão verde **"Run"** (ou aperte `Ctrl + Enter` / `Cmd + Enter`).
 
-Pronto! Todas as tabelas, tipos ENUM, triggers de recálculo de nota, índices de performance, políticas de segurança (RLS) e dados reais de Queimados (Vivian e Leonardo) serão criados instantaneamente.
+Pronto! Todas as tabelas, tipos ENUM, triggers de recálculo de nota, índices de performance, políticas de segurança (RLS) e configurações de selos e categorias serão criados instantaneamente.
 
 ---
 

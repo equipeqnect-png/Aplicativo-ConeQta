@@ -2,8 +2,7 @@ export type UserRole = 'consumer' | 'producer' | 'admin';
 
 export type ActiveRoleOption = 
   | 'consumer'
-  | 'producer_vivian'
-  | 'producer_leo'
+  | 'producer'
   | 'admin';
 
 export type Category = 
@@ -12,7 +11,8 @@ export type Category =
   | 'gastronomia'
   | 'estetica_beleza'
   | 'vestuario'
-  | 'artesanato';
+  | 'artesanato'
+  | 'outros';
 
 export type Certification = 
   | 'organico'
@@ -69,6 +69,7 @@ export interface Product {
   unit: string; // 'kg', 'maço', 'dúzia', 'un', 'pote 300g', 'litro', '500g', 'serviço'
   itemType?: 'produto' | 'servico';
   category: string;
+  customCategory?: string;
   images: string[];
   stock: number;
   harvestDate: string;
@@ -83,6 +84,7 @@ export interface Product {
   ordersCount?: number;
   rating?: number;
   reviewCount?: number;
+  createdAt?: string;
 }
 
 export interface CartItem {

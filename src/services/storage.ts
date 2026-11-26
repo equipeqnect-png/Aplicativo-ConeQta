@@ -25,6 +25,7 @@ const CHATS_KEY = 'coneqta_chats_v3';
 const FAVORITES_KEY = 'coneqta_favorites_v3';
 const CURRENT_USER_KEY = 'coneqta_current_user_v3';
 const USER_ADDRESS_KEY = 'coneqta_user_address_v3';
+const PURGE_DEMO_KEY = 'coneqta_purged_demo_v2';
 
 export interface UserAddressConfig {
   label: string;
@@ -34,9 +35,9 @@ export interface UserAddressConfig {
 }
 
 export const DEFAULT_USER_ADDRESS: UserAddressConfig = {
-  label: 'Sítio Vivian – Sede 🏡',
-  address: 'Estrada do Sol, 450',
-  neighborhood: 'Zona Rural',
+  label: 'Centro de Queimados 🏙️',
+  address: 'Rua Olímpia Silva, 210',
+  neighborhood: 'Centro',
   city: 'Queimados, RJ',
 };
 
@@ -50,11 +51,93 @@ export interface UserLocation {
 export const DEFAULT_USER_LOCATION: UserLocation = {
   city: 'Queimados',
   state: 'RJ',
-  neighborhood: 'Zona Rural',
+  neighborhood: 'Centro',
   maxDistanceKm: 30,
 };
 
 export class StorageService {
+  private static purgeDemoMockDataOnce(): void {
+    try {
+      if (typeof window === 'undefined' || !window.localStorage) return;
+      if (localStorage.getItem(PURGE_DEMO_KEY) === '1') return;
+
+      const fakeProducerIds = new Set(['prod_vivian', 'prod_leo']);
+      const fakeUserIds = new Set(['usr_vivian', 'usr_leo', 'usr_julia']);
+      const fakeReviewIds = new Set(['rev_1', 'rev_2']);
+      const fakeStoryIds = new Set(['story_vivian_1', 'story_leo_1']);
+      const fakeCommentIds = new Set(['com_1', 'com_2']);
+
+      // Remove fake producers
+      const rawProducers = localStorage.getItem(PRODUCERS_KEY);
+      if (rawProducers) {
+        const parsed: Producer[] = JSON.parse(rawProducers);
+        localStorage.setItem(
+          PRODUCERS_KEY,
+          JSON.stringify(parsed.filter((p) => !fakeProducerIds.has(p.id)))
+        );
+      }
+
+      // Remove fake users
+      const rawUsers = localStorage.getItem(USERS_KEY);
+      if (rawUsers) {
+        const parsed: AppUser[] = JSON.parse(rawUsers);
+        localStorage.setItem(
+          USERS_KEY,
+          JSON.stringify(parsed.filter((u) => !fakeUserIds.has(u.id)))
+        );
+      }
+
+      // Remove fake reviews
+      const rawReviews = localStorage.getItem(REVIEWS_KEY);
+      if (rawReviews) {
+        const parsed: ReviewItem[] = JSON.parse(rawReviews);
+        localStorage.setItem(
+          REVIEWS_KEY,
+          JSON.stringify(
+            parsed.filter(
+              (r) => !fakeReviewIds.has(r.id) && !fakeProducerIds.has(r.producerId)
+            )
+          )
+        );
+      }
+
+      // Remove fake stories & comments
+      const rawStories = localStorage.getItem(STORIES_KEY);
+      if (rawStories) {
+        const parsed: ProducerStory[] = JSON.parse(rawStories);
+        const cleaned = parsed
+          .filter((s) => !fakeStoryIds.has(s.id) && !fakeProducerIds.has(s.producerId))
+          .map((s) => ({
+            ...s,
+            comments: (s.comments || []).filter((c) => !fakeCommentIds.has(c.id)),
+          }));
+        localStorage.setItem(STORIES_KEY, JSON.stringify(cleaned));
+      }
+
+      // Clear active session if it belongs to a deleted fake user
+      const rawCurrentUser = localStorage.getItem(CURRENT_USER_KEY);
+      if (rawCurrentUser) {
+        const parsedUser: AppUser = JSON.parse(rawCurrentUser);
+        if (fakeUserIds.has(parsedUser.id)) {
+          localStorage.removeItem(CURRENT_USER_KEY);
+        }
+      }
+
+      // Reset default address if it pointed to Sítio Vivian
+      const rawAddress = localStorage.getItem(USER_ADDRESS_KEY);
+      if (rawAddress) {
+        const parsedAddr: UserAddressConfig = JSON.parse(rawAddress);
+        if (parsedAddr.label?.includes('Sítio Vivian')) {
+          localStorage.setItem(USER_ADDRESS_KEY, JSON.stringify(DEFAULT_USER_ADDRESS));
+        }
+      }
+
+      localStorage.setItem(PURGE_DEMO_KEY, '1');
+    } catch {
+      // ignore storage errors
+    }
+  }
+
   static logout(): void {
     localStorage.removeItem(CURRENT_USER_KEY);
     window.dispatchEvent(new Event('coneqta_user_changed'));
@@ -73,6 +156,7 @@ export class StorageService {
   }
   // Producers
   static getProducers(): Producer[] {
+    this.purgeDemoMockDataOnce();
     try {
       const data = localStorage.getItem(PRODUCERS_KEY);
       if (!data) {
@@ -227,6 +311,7 @@ export class StorageService {
 
   // Users
   static getUsers(): AppUser[] {
+    this.purgeDemoMockDataOnce();
     try {
       const data = localStorage.getItem(USERS_KEY);
       if (!data) {
@@ -292,6 +377,7 @@ export class StorageService {
 
   // Reviews
   static getReviews(): ReviewItem[] {
+    this.purgeDemoMockDataOnce();
     try {
       const data = localStorage.getItem(REVIEWS_KEY);
       if (!data) {
@@ -386,6 +472,7 @@ export class StorageService {
 
   // Stories / Vídeos Curtos (24 Horas)
   static getStories(includeExpired = false): ProducerStory[] {
+    this.purgeDemoMockDataOnce();
     try {
       const data = localStorage.getItem(STORIES_KEY);
       let list: ProducerStory[] = [];
@@ -551,6 +638,7 @@ export class StorageService {
 
   // Current session user
   static getCurrentUser(): AppUser | null {
+    this.purgeDemoMockDataOnce();
     try {
       const data = localStorage.getItem(CURRENT_USER_KEY);
       if (data) return JSON.parse(data);

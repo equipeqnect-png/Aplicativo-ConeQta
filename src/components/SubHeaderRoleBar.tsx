@@ -23,16 +23,10 @@ export const SubHeaderRoleBar: React.FC<SubHeaderRoleBarProps> = ({
           title: 'Painel de Auditoria (Admin)',
           textColor: 'text-stone-900',
         };
-      case 'producer_vivian':
+      case 'producer':
         return {
           icon: <Home className="w-4 h-4 text-[#D35400]" />,
-          title: `Painel do Vendedor (${producerName || 'Sítio Agroecológico da Vivian'})`,
-          textColor: 'text-[#D35400]',
-        };
-      case 'producer_leo':
-        return {
-          icon: <Home className="w-4 h-4 text-[#D35400]" />,
-          title: `Painel do Vendedor (${producerName || 'Comércio & Quitutes do Leo'})`,
+          title: producerName ? `Painel do Vendedor (${producerName})` : 'Painel do Vendedor',
           textColor: 'text-[#D35400]',
         };
       case 'consumer':

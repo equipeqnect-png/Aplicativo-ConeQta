@@ -36,9 +36,7 @@ import { SupabaseDiagnosticModal } from './components/SupabaseDiagnosticModal';
 
 const getRoleOptionForUser = (user: AppUser | null): ActiveRoleOption => {
   if (user?.role === 'admin') return 'admin';
-  if (user?.role === 'producer') {
-    return user.producerId === 'prod_leo' || user.farmId === 'prod_leo' ? 'producer_leo' : 'producer_vivian';
-  }
+  if (user?.role === 'producer') return 'producer';
   return 'consumer';
 };
 
@@ -317,6 +315,7 @@ export default function App() {
           producers={producers}
           products={products}
           reviews={reviews}
+          orders={orders}
           onOpenProducerProfile={(prod) => setSelectedProfileProducer(prod)}
           onOpenProductDetail={(prod) => setSelectedProductDetail(prod)}
           onReportProducer={(prod) => setReportingProducer(prod)}
@@ -340,27 +339,39 @@ export default function App() {
     );
   }
 
-  const activeProducerVivian = producers.find((p) => p.id === 'prod_vivian') || producers[0];
-  const activeProducerLeo = producers.find((p) => p.id === 'prod_leo') || producers[1] || producers[0];
-
-  const loggedInProducer =
+  const loggedInProducer: Producer | null =
     currentUser?.role === 'producer'
       ? producers.find(
           (p) => p.id === currentUser.producerId || p.id === currentUser.farmId || p.id === currentUser.id
-        ) || null
+        ) || {
+          id: currentUser.producerId || currentUser.farmId || `prod_${currentUser.id}`,
+          name: currentUser.name,
+          farmName: currentUser.farmName || `Loja de ${currentUser.name}`,
+          tagline: `Produtos e serviços locais em ${currentUser.neighborhood || 'Queimados'}`,
+          bio: `Empreendedor(a) local em ${currentUser.neighborhood || 'Queimados'}.`,
+          story: 'Edite os dados da sua loja na aba "Editar Perfil & Loja".',
+          avatar: currentUser.avatar || 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=400&q=80',
+          coverImage: 'https://images.unsplash.com/photo-1488459716781-31db52582fe9?auto=format&fit=crop&w=1200&q=80',
+          galleryImages: [],
+          location: {
+            city: currentUser.city || 'Queimados',
+            state: 'RJ',
+            distanceKm: 1.0,
+            neighborhood: currentUser.neighborhood || 'Queimados',
+          },
+          rating: 0,
+          reviewCount: 0,
+          certifications: [],
+          phone: currentUser.phone || '',
+          whatsapp: (currentUser.phone || '').replace(/\D/g, ''),
+          establishedYear: new Date().getFullYear(),
+          harvestDays: ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'],
+          deliveryMethods: ['Retirada no Local'],
+          specialty: 'Comércio Local',
+          viewsCount: 0,
+          category: 'outros',
+        }
       : null;
-
-  const currentProducerVivian =
-    currentUser?.role === 'producer' && currentUser?.producerId !== 'prod_leo' && loggedInProducer
-      ? loggedInProducer
-      : activeProducerVivian;
-
-  const currentProducerLeo =
-    currentUser?.role === 'producer' &&
-    (currentUser?.producerId === 'prod_leo' || currentUser?.farmId === 'prod_leo') &&
-    loggedInProducer
-      ? loggedInProducer
-      : activeProducerLeo;
 
   return (
     <div className="min-h-screen bg-[#F7F6F2] text-stone-800 flex flex-col font-sans selection:bg-emerald-200">
@@ -376,13 +387,7 @@ export default function App() {
       <SubHeaderRoleBar
         currentRoleOption={currentRoleOption}
         currentUser={currentUser}
-        producerName={
-          currentRoleOption === 'producer_leo'
-            ? currentProducerLeo?.farmName
-            : currentRoleOption === 'producer_vivian'
-              ? currentProducerVivian?.farmName
-              : undefined
-        }
+        producerName={currentRoleOption === 'producer' ? loggedInProducer?.farmName : undefined}
         onSwitchAccount={handleSwitchAccount}
       />
 
@@ -391,12 +396,13 @@ export default function App() {
         {/* VIEW A: CONSUMER VIEW */}
         {currentRoleOption === 'consumer' && (
           <ConsumerView
-            currentUser={currentUser || users.find((u) => u.id === 'usr_julia') || users[0]}
+            currentUser={currentUser}
             currentAddress={currentAddress}
             onOpenAddressModal={() => setIsAddressModalOpen(true)}
             products={products}
             producers={producers}
             reviews={reviews}
+            orders={orders}
             favorites={favorites}
             onToggleFavorite={handleToggleFavorite}
             onOpenProductDetail={setSelectedProductDetail}
@@ -405,26 +411,10 @@ export default function App() {
           />
         )}
 
-        {/* VIEW B: SELLER VIEW - SÍTIO VIVIAN */}
-        {currentRoleOption === 'producer_vivian' && (
+        {/* VIEW B: SELLER VIEW */}
+        {currentRoleOption === 'producer' && loggedInProducer && (
           <ProducerView
-            currentProducer={currentProducerVivian}
-            products={products}
-            orders={orders}
-            chats={chats}
-            currentUser={currentUser}
-            onSaveProduct={handleSaveProduct}
-            onDeleteProduct={handleDeleteProduct}
-            onUpdateOrderStatus={handleUpdateOrderStatus}
-            onSendMessage={handleSendMessage}
-            onSaveProducer={handleSaveProducer}
-          />
-        )}
-
-        {/* VIEW C: SELLER VIEW - COMÉRCIO & QUITUTES DO LEO */}
-        {currentRoleOption === 'producer_leo' && (
-          <ProducerView
-            currentProducer={currentProducerLeo}
+            currentProducer={loggedInProducer}
             products={products}
             orders={orders}
             chats={chats}

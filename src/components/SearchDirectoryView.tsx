@@ -61,6 +61,7 @@ export const SearchDirectoryView: React.FC<SearchDirectoryViewProps> = ({
     { id: 'estetica_beleza', label: 'Estética e beleza' },
     { id: 'vestuario', label: 'Vestuário' },
     { id: 'artesanato', label: 'Artesanato' },
+    { id: 'outros', label: 'Outros' },
   ];
 
   // Filtered Producers / Merchants
@@ -97,8 +98,9 @@ export const SearchDirectoryView: React.FC<SearchDirectoryViewProps> = ({
       const title = (prod.title || (prod as unknown as { name?: string }).name || '').toLowerCase();
       const description = (prod.description || '').toLowerCase();
       const farm = (prod.producerFarm || prod.producerName || '').toLowerCase();
+      const customCat = (prod.customCategory || '').toLowerCase();
 
-      const matchesSearch = !q || title.includes(q) || description.includes(q) || farm.includes(q);
+      const matchesSearch = !q || title.includes(q) || description.includes(q) || farm.includes(q) || customCat.includes(q);
       const matchesCat = selectedCategory === 'all' || prod.category === selectedCategory;
       const certs = Array.isArray(prod.certifications) ? prod.certifications : [];
       const matchesOrganic = !onlyOrganic || certs.includes('agroecologico') || certs.includes('organico') || !!prod.organic;

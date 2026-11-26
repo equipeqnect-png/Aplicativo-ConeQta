@@ -39,6 +39,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <span className="inline-flex items-center gap-1 bg-stone-900/75 backdrop-blur-xs text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-xs uppercase">
             {product.itemType === 'servico' ? 'Serviço' : 'Produto'}
           </span>
+          {product.category === 'outros' && product.customCategory && (
+            <span className="inline-flex items-center gap-1 bg-orange-600/90 backdrop-blur-xs text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-xs">
+              {product.customCategory}
+            </span>
+          )}
           {product.organic && (
             <span className="inline-flex items-center gap-1 bg-emerald-700/90 backdrop-blur-xs text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-xs">
               <Leaf className="w-3 h-3" />

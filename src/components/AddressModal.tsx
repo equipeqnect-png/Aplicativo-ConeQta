@@ -11,12 +11,6 @@ interface AddressModalProps {
 
 export const PRESET_LOCATIONS: UserAddressConfig[] = [
   {
-    label: 'Sítio Vivian – Sede 🏡',
-    address: 'Estrada do Sol, 450',
-    neighborhood: 'Zona Rural',
-    city: 'Queimados, RJ',
-  },
-  {
     label: 'Centro de Queimados 🏙️',
     address: 'Rua Olímpia Silva, 210',
     neighborhood: 'Centro',

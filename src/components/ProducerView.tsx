@@ -195,22 +195,6 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
     e.target.value = '';
   };
 
-  // Neighborhoods of Queimados
-  const queimadosNeighborhoods = [
-    'Centro',
-    'Vila São João',
-    'Fanchem',
-    'Belmonte',
-    'São Roque',
-    'Roncador',
-    'Paraíso',
-    'Ponte Preta',
-    'Jardim Queimados',
-    'Vila Nascente',
-    'Três Fontes',
-    'Zona Rural'
-  ];
-
   // Quick avatar suggestions
   const suggestedAvatars = [
     { label: 'Agricultora', url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80' },
@@ -515,7 +499,14 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
                       </span>
                     </div>
                     <div>
-                      <h4 className="font-bold text-stone-900 text-sm">{prod.title}</h4>
+                      <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                        <h4 className="font-bold text-stone-900 text-sm">{prod.title}</h4>
+                        {prod.category === 'outros' && prod.customCategory && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-50 text-[#D35400] border border-orange-200">
+                            {prod.customCategory}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-stone-500 line-clamp-2 mt-0.5">{prod.description}</p>
                     </div>
                     <div className="flex items-baseline justify-between pt-1">
@@ -827,7 +818,7 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
                     required
                     value={producerName}
                     onChange={(e) => setProducerName(e.target.value)}
-                    placeholder="Ex: Vivian dos Santos Nogueira"
+                    placeholder="Ex: Seu Nome Completo"
                     className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 focus:bg-white focus:outline-hidden focus:border-[#D35400] focus:ring-1 focus:ring-[#D35400]"
                   />
                 </div>
@@ -860,6 +851,7 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
                       <option value="estetica_beleza">Estética & Beleza Natural</option>
                       <option value="artesanato">Artesanato & Feito à Mão</option>
                       <option value="vestuario">Vestuário & Moda Local</option>
+                      <option value="outros">Outros</option>
                     </select>
                   </div>
                 </div>
@@ -901,7 +893,7 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
                   required
                   value={farmName}
                   onChange={(e) => setFarmName(e.target.value)}
-                  placeholder="Ex: Sítio Agroecológico da Vivian"
+                  placeholder="Ex: Nome da sua Loja, Sítio ou Comércio"
                   className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 focus:bg-white focus:outline-hidden focus:border-[#D35400] focus:ring-1 focus:ring-[#D35400]"
                 />
               </div>
@@ -992,15 +984,14 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
                 <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1.5">
                   Bairro em Queimados *
                 </label>
-                <select
+                <input
+                  type="text"
+                  required
                   value={neighborhood}
                   onChange={(e) => setNeighborhood(e.target.value)}
+                  placeholder="Digite o nome do bairro"
                   className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 focus:bg-white focus:outline-hidden focus:border-[#D35400] focus:ring-1 focus:ring-[#D35400]"
-                >
-                  {queimadosNeighborhoods.map((b) => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
-                </select>
+                />
               </div>
             </div>
 

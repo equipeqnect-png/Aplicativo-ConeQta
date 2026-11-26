@@ -287,8 +287,8 @@ export const SupabaseDiagnosticModal: React.FC<SupabaseDiagnosticModalProps> = (
                   Acesse <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="text-emerald-800 font-bold underline inline-flex items-center gap-0.5">supabase.com <ExternalLink className="w-3 h-3" /></a>, abra seu projeto e clique em <strong>Table Editor</strong> no menu lateral esquerdo:
                 </p>
                 <div className="bg-white p-3 rounded-xl border border-stone-200 text-xs text-stone-600 space-y-1">
-                  <p>• Na tabela <code className="font-mono bg-stone-100 px-1 py-0.5 rounded text-emerald-800 font-bold">producers</code>: você verá os empreendedores cadastrados (<strong>Vivian dos Santos</strong> e <strong>Leonardo Souza</strong>).</p>
-                  <p>• Na tabela <code className="font-mono bg-stone-100 px-1 py-0.5 rounded text-emerald-800 font-bold">products</code>: verá os produtos reais (Alface Crespa, Tomate Cereja, etc.).</p>
+                  <p>• Na tabela <code className="font-mono bg-stone-100 px-1 py-0.5 rounded text-emerald-800 font-bold">producers</code>: você verá todos os vendedores cadastrados na plataforma.</p>
+                  <p>• Na tabela <code className="font-mono bg-stone-100 px-1 py-0.5 rounded text-emerald-800 font-bold">products</code>: verá os produtos e serviços publicados pelos vendedores.</p>
                 </div>
               </div>
 
@@ -299,7 +299,7 @@ export const SupabaseDiagnosticModal: React.FC<SupabaseDiagnosticModalProps> = (
                   <span>Teste de Gravação em Tempo Real</span>
                 </div>
                 <p className="text-xs text-stone-700 leading-relaxed">
-                  No ConeQta, navegue como <strong>Produtor (Sítio Vivian)</strong> e adicione um novo produto ou edite o estoque de um item. Em seguida, dê F5 na página do Supabase: <strong>a alteração estará lá instantaneamente!</strong>
+                  No ConeQta, entre como <strong>Vendedor</strong> e adicione um novo produto ou edite as informações da sua loja. Em seguida, dê F5 na página do Supabase: <strong>a alteração estará lá instantaneamente!</strong>
                 </p>
               </div>
 

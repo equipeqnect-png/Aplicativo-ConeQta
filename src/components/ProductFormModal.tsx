@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Package, Wrench } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Package, Wrench, Camera, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
 import { Product, Producer } from '../types';
 
 interface ProductFormModalProps {
@@ -9,6 +9,9 @@ interface ProductFormModalProps {
   currentProducer: Producer;
   productToEdit?: Product | null;
 }
+
+const DEFAULT_FALLBACK_IMAGE =
+  'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=600&q=80';
 
 export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   isOpen,
@@ -23,13 +26,12 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
   const [price, setPrice] = useState(productToEdit ? productToEdit.price.toString() : '');
   const [unit, setUnit] = useState(productToEdit?.unit || 'Unidade');
   const [category, setCategory] = useState(productToEdit?.category || 'produtos_agricolas');
+  const [customCategory, setCustomCategory] = useState(productToEdit?.customCategory || '');
   const [stock, setStock] = useState(productToEdit ? productToEdit.stock.toString() : '10');
-  const [ordersCount, setOrdersCount] = useState(productToEdit ? String(productToEdit.ordersCount || 0) : '0');
   const [harvestDate, setHarvestDate] = useState(productToEdit?.harvestDate || 'Disponível no catálogo');
-  const [imageUrl, setImageUrl] = useState(
-    productToEdit?.images?.[0] || 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=600&q=80'
-  );
-  const [organic, setOrganic] = useState(productToEdit ? productToEdit.organic : false);
+  const [images, setImages] = useState<string[]>(productToEdit?.images?.filter(Boolean) || []);
+  const [photoUrlInput, setPhotoUrlInput] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -39,21 +41,51 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       setPrice(productToEdit ? productToEdit.price.toString() : '');
       setUnit(productToEdit?.unit || 'Unidade');
       setCategory(productToEdit?.category || currentProducer.category || 'produtos_agricolas');
+      setCustomCategory(productToEdit?.customCategory || '');
       setStock(productToEdit ? productToEdit.stock.toString() : '10');
-      setOrdersCount(productToEdit ? String(productToEdit.ordersCount || 0) : '0');
       setHarvestDate(productToEdit?.harvestDate || 'Disponível no catálogo');
-      setImageUrl(
-        productToEdit?.images?.[0] || 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=600&q=80'
-      );
-      setOrganic(productToEdit ? productToEdit.organic : false);
+      setImages(productToEdit?.images?.filter(Boolean) || []);
+      setPhotoUrlInput('');
     }
   }, [isOpen, productToEdit, currentProducer.category]);
 
   if (!isOpen) return null;
 
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    (Array.from(files) as File[]).forEach((file: File) => {
+      if (!file.type.startsWith('image/')) return;
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        if (result) {
+          setImages((prev) => [...prev, result]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleAddPhotoUrl = () => {
+    const trimmed = photoUrlInput.trim();
+    if (!trimmed) return;
+    setImages((prev) => [...prev, trimmed]);
+    setPhotoUrlInput('');
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setImages((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !price) return;
+    if (category === 'outros' && !customCategory.trim()) return;
+
+    const finalImages = images.length > 0 ? images : [DEFAULT_FALLBACK_IMAGE];
 
     const newProd: Product = {
       id: productToEdit ? productToEdit.id : `p_${Date.now()}`,
@@ -67,20 +99,20 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
       price: parseFloat(price) || 0,
       unit,
       category,
-      images: [
-        imageUrl.trim() || 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=600&q=80',
-      ],
+      customCategory: category === 'outros' ? customCategory.trim() : undefined,
+      images: finalImages,
       stock: parseInt(stock, 10) || 1,
       harvestDate,
-      organic,
-      certifications: organic ? ['agroecologico', 'familiar', 'sem_agrotoxico'] : ['familiar', 'artesanal'],
+      organic: productToEdit?.organic ?? false,
+      certifications: productToEdit?.certifications || ['familiar'],
       freshnessScore: 10,
       isSeasonal: false,
       featured: true,
       clicksCount: productToEdit?.clicksCount || 0,
-      ordersCount: Math.max(0, parseInt(ordersCount, 10) || 0),
+      ordersCount: productToEdit?.ordersCount || 0,
       rating: productToEdit?.rating || 0,
       reviewCount: productToEdit?.reviewCount || 0,
+      createdAt: productToEdit?.createdAt || new Date().toISOString(),
     };
 
     onSave(newProd);
@@ -192,9 +224,10 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Categoria + campo condicional "Outros" */}
+          <div className="space-y-3">
             <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase mb-1">Categoria</label>
+              <label className="block text-[10px] font-bold text-stone-600 uppercase mb-1">Categoria *</label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
@@ -205,21 +238,25 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 <option value="estetica_beleza">Estética e Beleza</option>
                 <option value="vestuario">Vestuário</option>
                 <option value="artesanato">Artesanato</option>
+                <option value="outros">Outros</option>
               </select>
             </div>
-            <div>
-              <label className="block text-[10px] font-bold text-stone-600 uppercase mb-1">
-                Vendas / Atendimentos (Ranking)
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={ordersCount}
-                onChange={(e) => setOrdersCount(e.target.value)}
-                placeholder="0"
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800"
-              />
-            </div>
+
+            {category === 'outros' && (
+              <div>
+                <label className="block text-[10px] font-bold text-stone-600 uppercase mb-1">
+                  Descreva a categoria do produto ou serviço *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                  placeholder="Ex: Serviços Elétricos, Pet Shop, Papelaria, Manutenção..."
+                  className="w-full px-3.5 py-2.5 bg-orange-50/50 border border-orange-300 rounded-xl text-xs text-stone-800 focus:bg-white focus:outline-hidden focus:border-[#D35400]"
+                />
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -257,27 +294,73 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
             />
           </div>
 
-          <div>
-            <label className="block text-[10px] font-bold text-stone-600 uppercase mb-1">URL da Foto</label>
-            <input
-              type="text"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              className="w-full px-3.5 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800"
-            />
-          </div>
-
-          <div className="flex items-center gap-2 pt-1">
-            <input
-              type="checkbox"
-              id="isOrganic"
-              checked={organic}
-              onChange={(e) => setOrganic(e.target.checked)}
-              className="w-4 h-4 rounded-sm text-[#D35400] focus:ring-[#D35400]"
-            />
-            <label htmlFor="isOrganic" className="text-xs font-bold text-stone-700 cursor-pointer">
-              Produção Artesanal / Agroecológica Local
+          {/* Fotos do Produto / Serviço (Upload do dispositivo + URL opcional) */}
+          <div className="space-y-2.5 pt-1">
+            <label className="block text-[10px] font-bold text-stone-600 uppercase">
+              Fotos do {itemType === 'servico' ? 'Serviço' : 'Produto'}
             </label>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handlePhotoUpload}
+              className="hidden"
+            />
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full py-3 px-4 bg-stone-50 hover:bg-orange-50 border-2 border-dashed border-stone-300 hover:border-[#D35400] rounded-2xl text-xs font-bold text-stone-700 hover:text-[#D35400] flex items-center justify-center gap-2 transition-colors cursor-pointer"
+            >
+              <Camera className="w-4 h-4" />
+              <span>Adicionar fotos do dispositivo</span>
+              <Upload className="w-3.5 h-3.5" />
+            </button>
+
+            {images.length > 0 ? (
+              <div className="grid grid-cols-4 gap-2 pt-1">
+                {images.map((img, idx) => (
+                  <div
+                    key={idx}
+                    className="relative aspect-square rounded-xl overflow-hidden border border-stone-200 bg-stone-100 group"
+                  >
+                    <img src={img} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(idx)}
+                      title="Remover foto"
+                      className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 hover:bg-red-600 text-white flex items-center justify-center transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-[11px] text-stone-400 bg-stone-50 px-3 py-2 rounded-xl border border-stone-100">
+                <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+                <span>Nenhuma foto selecionada ainda. Escolha uma ou mais fotos da sua galeria.</span>
+              </div>
+            )}
+
+            <div className="flex gap-1.5 pt-1">
+              <input
+                type="url"
+                value={photoUrlInput}
+                onChange={(e) => setPhotoUrlInput(e.target.value)}
+                placeholder="Ou cole o link (URL) de uma imagem..."
+                className="flex-1 px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800"
+              />
+              <button
+                type="button"
+                onClick={handleAddPhotoUrl}
+                className="px-3 py-2 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold rounded-xl cursor-pointer transition-colors"
+              >
+                Adicionar
+              </button>
+            </div>
           </div>
 
           <div className="flex gap-2 pt-3">
@@ -300,3 +383,4 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
     </div>
   );
 };
+

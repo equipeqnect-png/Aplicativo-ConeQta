@@ -417,14 +417,15 @@ CREATE POLICY "Selos visíveis para todos" ON public.seals FOR SELECT USING (tru
 CREATE POLICY "Categorias visíveis para todos" ON public.categories FOR SELECT USING (true);
 
 -- ==============================================================================
--- 7. CARGA DE DADOS INICIAIS (SEED DATA REAL DE QUEIMADOS)
+-- ==============================================================================
+-- 7. CARGA DE DADOS INICIAIS (APENAS CONFIGURAÇÃO DE SELOS E CATEGORIAS)
 -- ==============================================================================
 
 -- 7.1. SELOS DE QUALIDADE E SUSTENTABILIDADE
 INSERT INTO public.seals (id, title, badge, description, icon, color, active_count) VALUES
-('familiar', 'Comércio Familiar Local', 'FAMILIAR', 'Empreendimento familiar de Queimados com geração de renda e fortalecimento comunitário.', 'Users', 'amber', 2),
-('artesanal', 'Produção Artesanal', 'ARTESANAL', 'Processamento caseiro e tradicional sem aditivos industriais.', 'Sparkles', 'orange', 1),
-('selo_verde', 'Selo Verde Queimados', 'SELO VERDE', 'Certificação municipal do Desafio Liga Jovem • Equipe Q-NECT para sustentabilidade e comércio local.', 'Award', 'green', 2)
+('familiar', 'Comércio Familiar Local', 'FAMILIAR', 'Empreendimento familiar de Queimados com geração de renda e fortalecimento comunitário.', 'Users', 'amber', 0),
+('artesanal', 'Produção Artesanal', 'ARTESANAL', 'Processamento caseiro e tradicional sem aditivos industriais.', 'Sparkles', 'orange', 0),
+('selo_verde', 'Selo Verde Queimados', 'SELO VERDE', 'Certificação municipal do Desafio Liga Jovem • Equipe Q-NECT para sustentabilidade e comércio local.', 'Award', 'green', 0)
 ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, badge = EXCLUDED.badge, description = EXCLUDED.description;
 
 -- 7.2. CATEGORIAS
@@ -434,126 +435,6 @@ INSERT INTO public.categories (id, name, icon, count, color) VALUES
 ('gastronomia', 'Gastronomia', 'Utensils', 0, '#D97706'),
 ('estetica_beleza', 'Estética e beleza', 'Sparkles', 0, '#EC4899'),
 ('vestuario', 'Vestuário', 'Shirt', 0, '#6366F1'),
-('artesanato', 'Artesanato', 'Palette', 0, '#8B5CF6')
+('artesanato', 'Artesanato', 'Palette', 0, '#8B5CF6'),
+('outros', 'Outros', 'Tag', 0, '#64748B')
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, icon = EXCLUDED.icon;
-
--- 7.3. PRODUTORES DE QUEIMADOS
-INSERT INTO public.producers (
-    id, name, farm_name, tagline, bio, story, avatar, cover_image,
-    city, state, neighborhood, address, distance_km, lat, lng, rating, review_count,
-    certifications, phone, whatsapp, established_year, harvest_days, delivery_methods,
-    hectares, specialty, views_count, category
-) VALUES
-(
-    'prod_vivian',
-    'Vivian dos Santos Nogueira',
-    'Sítio Agroecológico da Vivian',
-    'Agricultura familiar e produtos artesanais de Queimados',
-    'Empreendedora local dedicada ao fortalecimento do comércio justo e produção de qualidade em Queimados.',
-    'Com dedicação e respeito à nossa comunidade em Queimados, oferecemos produtos feitos com carinho, transparência e contato direto com os clientes.',
-    'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
-    'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=1200&q=80',
-    'Queimados',
-    'RJ',
-    'Zona Rural',
-    'Estrada do Sol, 450',
-    0,
-    -22.7144,
-    -43.5558,
-    5.0,
-    1,
-    ARRAY['familiar', 'selo_verde'],
-    '(21) 98765-4321',
-    '5521987654321',
-    2017,
-    ARRAY['Segunda', 'Quarta', 'Sexta', 'Sábado'],
-    ARRAY['Retirada no Local', 'Entrega em Domicílio em Queimados'],
-    3.5,
-    'Produtos Agrícolas e Artesanais',
-    12,
-    'produtos_agricolas'
-),
-(
-    'prod_leo',
-    'Leonardo Souza',
-    'Comércio & Quitutes do Leo',
-    'Gastronomia local, receitas tradicionais e produtos de Queimados',
-    'Empreendedor do bairro Vila Tinguá / Lazareto trazendo produtos selecionados da nossa região.',
-    'Atuando no comércio local de Queimados há anos, valorizando pequenos produtores e atendendo as famílias com dedicação.',
-    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
-    'https://images.unsplash.com/photo-1527153857715-3908f2bae5e8?auto=format&fit=crop&w=1200&q=80',
-    'Queimados',
-    'RJ',
-    'Vila Tinguá / Lazareto',
-    'Estrada do Lazareto, 120',
-    3.2,
-    -22.7092,
-    -43.5412,
-    4.9,
-    3,
-    ARRAY['artesanal', 'familiar', 'selo_verde'],
-    '(21) 97654-3210',
-    '5521976543210',
-    2012,
-    ARRAY['Terça', 'Quinta', 'Sábado'],
-    ARRAY['Entrega em Domicílio', 'Retirada no Estabelecimento'],
-    8.0,
-    'Gastronomia e Alimentos Artesanais',
-    8,
-    'gastronomia'
-)
-ON CONFLICT (id) DO UPDATE SET 
-    name = EXCLUDED.name, 
-    farm_name = EXCLUDED.farm_name,
-    bio = EXCLUDED.bio,
-    phone = EXCLUDED.phone,
-    whatsapp = EXCLUDED.whatsapp;
-
--- 7.4. AVALIAÇÕES REAIS
-INSERT INTO public.reviews (id, producer_id, producer_name, author_name, author_avatar, rating, comment, verified_purchase, helpful_count) VALUES
-('rev_1', 'prod_vivian', 'Sítio Agroecológico da Vivian', 'Julia', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80', 5, 'Atendimento impecável e produtos colhidos no mesmo dia aqui em Queimados! Super recomendo.', true, 4),
-('rev_2', 'prod_leo', 'Comércio & Quitutes do Leo', 'Carlos Eduardo Santos', 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=400&q=80', 5, 'Os quitutes artesanais são deliciosos, fresquinhos e com tempero caseiro de verdade!', true, 6)
-ON CONFLICT (id) DO NOTHING;
-
--- 7.5. STORIES INICIAIS
-INSERT INTO public.stories (
-    id, producer_id, producer_name, producer_farm, producer_avatar,
-    video_url, thumbnail_url, title, caption, created_at, expires_at, likes_count, tag
-) VALUES
-(
-    'story_vivian_1',
-    'prod_vivian',
-    'Vivian dos Santos',
-    'Sítio Agroecológico da Vivian',
-    'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
-    'https://assets.mixkit.co/videos/preview/mixkit-farmer-harvesting-lettuce-in-a-greenhouse-41584-large.mp4',
-    'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=800&q=80',
-    'Colheita fresca do dia!',
-    'Manhã de colheita no sítio aqui em Queimados! Tudo fresquinho pronto para vocês 🥬🌱',
-    NOW(),
-    NOW() + INTERVAL '24 hours',
-    14,
-    'Colheita do Dia'
-),
-(
-    'story_leo_1',
-    'prod_leo',
-    'Leonardo Souza',
-    'Comércio & Quitutes do Leo',
-    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
-    'https://assets.mixkit.co/videos/preview/mixkit-hands-of-a-baker-kneading-dough-42289-large.mp4',
-    'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80',
-    'Produção artesanal ao vivo',
-    'Receita artesanal saindo do forno agora na Vila Tinguá! Quem vai querer? 🥖✨',
-    NOW(),
-    NOW() + INTERVAL '24 hours',
-    19,
-    'Quitutes Artesanais'
-)
-ON CONFLICT (id) DO NOTHING;
-
--- 7.6. COMENTÁRIOS DOS STORIES
-INSERT INTO public.story_comments (id, story_id, user_name, user_avatar, text, created_at) VALUES
-('com_1', 'story_vivian_1', 'Julia', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80', 'Que maravilha! Quero pedir para a entrega de hoje 💚', NOW() - INTERVAL '2 hours'),
-('com_2', 'story_leo_1', 'Vivian Nogueira', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80', 'Cheirinho bom de longe! Parabéns Leo!', NOW() - INTERVAL '4 hours')
-ON CONFLICT (id) DO NOTHING;

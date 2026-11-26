@@ -21,8 +21,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   // Admin: Dark Forest/Slate (#162820)
   const getHeaderBg = () => {
     switch (currentRoleOption) {
-      case 'producer_vivian':
-      case 'producer_leo':
+      case 'producer':
         return 'bg-[#D35400]';
       case 'admin':
         return 'bg-[#162820]';
@@ -35,13 +34,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   const getRoleBadge = () => {
     switch (currentRoleOption) {
       case 'admin':
-        return 'ADMINISTRADORA';
-      case 'producer_vivian':
-      case 'producer_leo':
+        return 'ADMINISTRADOR(A)';
+      case 'producer':
         return 'VENDEDOR(A)';
       case 'consumer':
       default:
-        return 'CONSUMIDORA';
+        return 'CONSUMIDOR(A)';
     }
   };
 

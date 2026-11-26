@@ -14,7 +14,7 @@ import {
   Building,
   ShoppingBag
 } from 'lucide-react';
-import { ActiveRoleOption, AppUser } from '../types';
+import { ActiveRoleOption, AppUser, Producer } from '../types';
 import { StorageService } from '../services/storage';
 import { authService } from '../services/supabaseClient';
 
@@ -46,26 +46,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [regCpf, setRegCpf] = useState('');
   const [regPhone, setRegPhone] = useState('');
   const [regRole, setRegRole] = useState<'consumer' | 'producer'>('consumer');
-  const [regNeighborhood, setRegNeighborhood] = useState('Centro');
+  const [regNeighborhood, setRegNeighborhood] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
   const [regError, setRegError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const neighborhoods = [
-    'Centro',
-    'Vila São João',
-    'Fanchem',
-    'Belmonte',
-    'São Roque',
-    'Roncador',
-    'Paraíso',
-    'Ponte Preta',
-    'Jardim Queimados',
-    'Zona Rural'
-  ];
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,11 +101,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     if (foundUser.role === 'admin') {
       onLogin('admin', foundUser);
     } else if (foundUser.role === 'producer') {
-      if (foundUser.producerId === 'prod_leo' || foundUser.id === 'usr_leo') {
-        onLogin('producer_leo', foundUser);
-      } else {
-        onLogin('producer_vivian', foundUser);
-      }
+      onLogin('producer', foundUser);
     } else {
       onLogin('consumer', foundUser);
     }
@@ -156,21 +139,64 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setIsSubmitting(true);
 
     try {
+      const userId = `usr_${Date.now()}`;
+      const producerId = regRole === 'producer' ? `prod_${Date.now()}` : undefined;
+      const cleanName = regName.trim();
+      const cleanNeighborhood = regNeighborhood.trim() || 'Queimados';
+      const cleanPhone = regPhone.trim() || '(21) 99999-9999';
+      const numericPhone = cleanPhone.replace(/\D/g, '');
+
       const newUser: AppUser = {
-        id: `usr_${Date.now()}`,
-        name: regName.trim(),
+        id: userId,
+        name: cleanName,
         email: regEmail.trim().toLowerCase(),
         password: regPassword, // Defined password
         cpf: regCpf.trim() || undefined,
-        phone: regPhone.trim() || '(21) 99999-9999',
+        phone: cleanPhone,
         role: regRole,
         city: 'Queimados',
-        neighborhood: regNeighborhood,
+        neighborhood: cleanNeighborhood,
         status: 'ativo',
         verified: true,
         createdAt: new Date().toLocaleDateString('pt-BR'),
-        farmId: regRole === 'producer' ? 'prod_vivian' : undefined,
+        producerId,
+        farmId: producerId,
+        farmName: regRole === 'producer' ? `Loja de ${cleanName}` : undefined,
       };
+
+      // If registering as a seller, create a corresponding Seller/Producer profile
+      if (regRole === 'producer' && producerId) {
+        const newProducer: Producer = {
+          id: producerId,
+          name: cleanName,
+          farmName: `Loja de ${cleanName}`,
+          tagline: `Produtos e serviços locais em ${cleanNeighborhood}`,
+          bio: `Empreendedor(a) local de ${cleanNeighborhood}, Queimados.`,
+          story: `Bem-vindo ao meu espaço no ConeQta! Edite seu perfil na aba "Editar Perfil & Loja" para adicionar suas fotos e informações.`,
+          avatar: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=400&q=80',
+          coverImage: 'https://images.unsplash.com/photo-1488459716781-31db52582fe9?auto=format&fit=crop&w=1200&q=80',
+          galleryImages: [],
+          location: {
+            city: 'Queimados',
+            state: 'RJ',
+            distanceKm: 1.0,
+            neighborhood: cleanNeighborhood,
+            address: `${cleanNeighborhood}, Queimados - RJ`,
+          },
+          rating: 0,
+          reviewCount: 0,
+          certifications: [],
+          phone: cleanPhone,
+          whatsapp: numericPhone ? (numericPhone.startsWith('55') ? numericPhone : `55${numericPhone}`) : '',
+          establishedYear: new Date().getFullYear(),
+          harvestDays: ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'],
+          deliveryMethods: ['Retirada no Local'],
+          specialty: 'Comércio Local',
+          viewsCount: 0,
+          category: 'outros',
+        };
+        StorageService.saveProducer(newProducer);
+      }
 
       // Save user to storage
       StorageService.saveUser(newUser);
@@ -190,7 +216,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       // Log in and route
       if (regRole === 'producer') {
-        onLogin('producer_vivian', newUser);
+        onLogin('producer', newUser);
       } else {
         onLogin('consumer', newUser);
       }
@@ -511,17 +537,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1">
-                        BAIRRO EM QUEIMADOS
+                        BAIRRO EM QUEIMADOS *
                       </label>
-                      <select
-                        value={regNeighborhood}
-                        onChange={(e) => setRegNeighborhood(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-[#FBFBFA] border border-stone-200 rounded-xl text-xs text-stone-800 focus:bg-white focus:outline-hidden focus:border-[#1F6B38] focus:ring-1 focus:ring-[#1F6B38]"
-                      >
-                        {neighborhoods.map((bairro) => (
-                          <option key={bairro} value={bairro}>{bairro}</option>
-                        ))}
-                      </select>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          required
+                          value={regNeighborhood}
+                          onChange={(e) => setRegNeighborhood(e.target.value)}
+                          placeholder="Digite o nome do seu bairro"
+                          className="w-full px-3.5 py-2.5 bg-[#FBFBFA] border border-stone-200 rounded-xl text-xs text-stone-800 focus:bg-white focus:outline-hidden focus:border-[#1F6B38] focus:ring-1 focus:ring-[#1F6B38] pr-8"
+                        />
+                        <MapPin className="w-3.5 h-3.5 text-stone-400 absolute right-2.5 top-3 pointer-events-none" />
+                      </div>
                     </div>
                   </div>
 
