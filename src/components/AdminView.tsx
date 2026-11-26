@@ -17,6 +17,8 @@ import {
   ShieldAlert,
   CheckCircle2,
   Clock,
+  MessageSquarePlus,
+  Lock,
 } from 'lucide-react';
 import {
   AppUser,
@@ -26,6 +28,7 @@ import {
   ReviewItem,
   CategoryDef,
   SellerReport,
+  AppFeedback,
 } from '../types';
 
 interface AdminViewProps {
@@ -36,10 +39,12 @@ interface AdminViewProps {
   seals: SealItem[];
   reviews: ReviewItem[];
   reports: SellerReport[];
+  appFeedbacks?: AppFeedback[];
   categories: CategoryDef[];
   onSaveUser: (user: AppUser) => void;
   onDeleteProduct: (productId: string) => void;
   onUpdateReportStatus: (reportId: string, status: SellerReport['status']) => void;
+  onUpdateAppFeedbackStatus?: (feedbackId: string, status: AppFeedback['status']) => void;
   onOpenDiagnostics?: () => void;
 }
 
@@ -59,22 +64,34 @@ export const AdminView: React.FC<AdminViewProps> = ({
   seals,
   reviews,
   reports,
+  appFeedbacks = [],
   categories,
   onSaveUser,
   onDeleteProduct,
   onUpdateReportStatus,
+  onUpdateAppFeedbackStatus,
   onOpenDiagnostics,
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'relatorios' | 'denuncias' | 'usuarios' | 'vendedores' | 'produtos' | 'categorias' | 'selos' | 'avaliacoes' | 'mapa'
+    'relatorios' | 'app_feedbacks' | 'denuncias' | 'usuarios' | 'vendedores' | 'produtos' | 'categorias' | 'selos' | 'avaliacoes' | 'mapa'
   >('relatorios');
 
   const [userSearch, setUserSearch] = useState('');
+  const [feedbackFilter, setFeedbackFilter] = useState<'todos' | 'novo' | 'lido' | 'analisado'>('todos');
 
   const totalUsersCount = users.length;
   const totalSellersCount = producers.length;
   const totalCatalogCount = products.length;
   const pendingReportsCount = reports.filter((r) => r.status === 'pendente').length;
+  const newAppFeedbacksCount = appFeedbacks.filter((f) => f.status === 'novo').length;
+  const averageAppRating =
+    appFeedbacks.length > 0
+      ? (appFeedbacks.reduce((sum, f) => sum + f.rating, 0) / appFeedbacks.length).toFixed(1)
+      : '—';
+  const filteredAppFeedbacks =
+    feedbackFilter === 'todos'
+      ? appFeedbacks
+      : appFeedbacks.filter((f) => f.status === feedbackFilter);
 
   const filteredUsers = users.filter((u) => {
     const q = (userSearch || '').trim().toLowerCase();
@@ -236,7 +253,24 @@ export const AdminView: React.FC<AdminViewProps> = ({
             }`}
           >
             <Star className="w-4 h-4" />
-            <span>Avaliações ({reviews.length})</span>
+            <span>Avaliações de Lojas ({reviews.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('app_feedbacks')}
+            className={`flex items-center gap-2 px-4 py-3.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+              activeTab === 'app_feedbacks'
+                ? 'border-emerald-700 text-emerald-800 bg-emerald-50/40'
+                : 'border-transparent text-stone-600 hover:text-stone-900 hover:bg-stone-50'
+            }`}
+          >
+            <MessageSquarePlus className="w-4 h-4 text-emerald-700" />
+            <span>Avaliações do App ({appFeedbacks.length})</span>
+            {newAppFeedbacksCount > 0 && (
+              <span className="px-1.5 py-0.5 bg-emerald-700 text-white text-[10px] font-extrabold rounded-full">
+                {newAppFeedbacksCount}
+              </span>
+            )}
           </button>
 
           <button
@@ -683,6 +717,188 @@ export const AdminView: React.FC<AdminViewProps> = ({
               <div className="text-[10px] text-stone-400">{r.date}</div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* TAB: AVALIAÇÕES DO APP (CONFIDENCIAL - APENAS ADMIN) */}
+      {activeTab === 'app_feedbacks' && (
+        <div className="bg-white rounded-3xl p-6 border border-stone-200 shadow-2xs space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-stone-100">
+            <div className="space-y-1">
+              <h3 className="font-bold text-stone-900 text-base font-serif flex items-center gap-2">
+                <Lock className="w-4 h-4 text-emerald-700" />
+                <span>Avaliações, Experiências e Sugestões do Aplicativo</span>
+              </h3>
+              <p className="text-xs text-stone-500">
+                Respostas enviadas por usuários logados. Conteúdo privado, visível exclusivamente ao administrador.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 bg-stone-100 p-1 rounded-xl">
+              {(['todos', 'novo', 'lido', 'analisado'] as const).map((statusKey) => (
+                <button
+                  key={statusKey}
+                  type="button"
+                  onClick={() => setFeedbackFilter(statusKey)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-colors cursor-pointer ${
+                    feedbackFilter === statusKey
+                      ? 'bg-white text-stone-900 shadow-2xs'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  {statusKey === 'todos' ? `Todos (${appFeedbacks.length})` : statusKey}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Summary Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500">
+                Total de Respostas
+              </div>
+              <div className="text-2xl font-extrabold text-stone-900 mt-0.5">{appFeedbacks.length}</div>
+            </div>
+            <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-amber-800">
+                Nota Média do Aplicativo
+              </div>
+              <div className="text-2xl font-extrabold text-stone-900 mt-0.5 flex items-center gap-1.5">
+                <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
+                <span>{averageAppRating}</span>
+              </div>
+            </div>
+            <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200/80">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">
+                Novas / Não Lidas
+              </div>
+              <div className="text-2xl font-extrabold text-emerald-800 mt-0.5">{newAppFeedbacksCount}</div>
+            </div>
+          </div>
+
+          {filteredAppFeedbacks.length === 0 ? (
+            <div className="text-center py-12 bg-stone-50 rounded-2xl border border-stone-200 text-stone-500 space-y-2">
+              <MessageSquarePlus className="w-9 h-9 text-stone-400 mx-auto" />
+              <p className="text-sm font-bold text-stone-700">
+                Nenhuma avaliação do aplicativo encontrada
+              </p>
+              <p className="text-xs text-stone-500">
+                Quando usuários logados avaliarem o aplicativo na aba "Avaliar Aplicativo", as respostas aparecerão aqui.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredAppFeedbacks.map((fb) => (
+                <div
+                  key={fb.id}
+                  className="p-5 rounded-2xl border border-stone-200 bg-stone-50/60 space-y-3"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-stone-200/70">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <strong className="text-stone-900 text-sm">{fb.userName}</strong>
+                        <span className="text-stone-400">·</span>
+                        <span className="text-stone-600">{fb.userEmail}</span>
+                        <span className="text-stone-400">·</span>
+                        <span className="font-semibold text-stone-700">
+                          {fb.userRole === 'producer' ? 'Vendedor' : fb.userRole === 'admin' ? 'Administrador' : 'Consumidor'}
+                        </span>
+                        {fb.userNeighborhood && (
+                          <>
+                            <span className="text-stone-400">·</span>
+                            <span className="text-stone-500">{fb.userNeighborhood}</span>
+                          </>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-stone-500 mt-1">
+                        Enviado em {new Date(fb.createdAt).toLocaleString('pt-BR')} · Status:{' '}
+                        <strong
+                          className={
+                            fb.status === 'novo'
+                              ? 'text-emerald-700'
+                              : fb.status === 'lido'
+                              ? 'text-amber-700'
+                              : 'text-stone-700'
+                          }
+                        >
+                          {fb.status}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 self-start sm:self-center">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star
+                          key={star}
+                          className={`w-4 h-4 ${
+                            star <= fb.rating ? 'text-amber-400 fill-amber-400' : 'text-stone-300'
+                          }`}
+                        />
+                      ))}
+                      <span className="text-xs font-bold text-stone-800 ml-1">{fb.rating}.0</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5 text-xs">
+                    <div>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1">
+                        Relato de Experiência
+                      </div>
+                      <p className="text-stone-800 bg-white p-3 rounded-xl border border-stone-200 leading-relaxed">
+                        {fb.experience}
+                      </p>
+                    </div>
+
+                    {fb.comment && (
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1">
+                          Comentários
+                        </div>
+                        <p className="text-stone-700 bg-white p-3 rounded-xl border border-stone-200 leading-relaxed">
+                          {fb.comment}
+                        </p>
+                      </div>
+                    )}
+
+                    {fb.suggestion && (
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 mb-1">
+                          Sugestões de Melhoria
+                        </div>
+                        <p className="text-stone-800 bg-emerald-50/40 p-3 rounded-xl border border-emerald-200/80 leading-relaxed">
+                          {fb.suggestion}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {onUpdateAppFeedbackStatus && (
+                    <div className="flex flex-wrap gap-2 pt-2 border-t border-stone-200/80">
+                      {fb.status !== 'lido' && (
+                        <button
+                          type="button"
+                          onClick={() => onUpdateAppFeedbackStatus(fb.id, 'lido')}
+                          className="px-3 py-1.5 bg-stone-700 hover:bg-stone-800 text-white text-[11px] font-bold rounded-lg cursor-pointer transition-colors"
+                        >
+                          Marcar como Lido
+                        </button>
+                      )}
+                      {fb.status !== 'analisado' && (
+                        <button
+                          type="button"
+                          onClick={() => onUpdateAppFeedbackStatus(fb.id, 'analisado')}
+                          className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-bold rounded-lg cursor-pointer transition-colors"
+                        >
+                          Marcar como Analisado
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

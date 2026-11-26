@@ -10,9 +10,10 @@ import {
   SealItem,
   CategoryDef,
   SellerReport,
+  AppFeedback,
 } from './types';
 import { StorageService, UserAddressConfig } from './services/storage';
-import { authService } from './services/supabaseClient';
+import { authService, appFeedbacksService } from './services/supabaseClient';
 
 // Screens & Layout
 import { LandingPage } from './components/LandingPage';
@@ -54,6 +55,7 @@ export default function App() {
   const [chats, setChats] = useState<ChatMessage[]>(() => StorageService.getChats());
   const [reviews, setReviews] = useState<ReviewItem[]>(() => StorageService.getReviews());
   const [reports, setReports] = useState<SellerReport[]>(() => StorageService.getSellerReports());
+  const [appFeedbacks, setAppFeedbacks] = useState<AppFeedback[]>(() => StorageService.getAppFeedbacks());
   const [seals] = useState<SealItem[]>(() => StorageService.getSeals());
   const [categories] = useState<CategoryDef[]>(() => StorageService.getCategories());
   const [users, setUsers] = useState<AppUser[]>(() => StorageService.getUsers());
@@ -78,6 +80,7 @@ export default function App() {
       setUsers(StorageService.getUsers());
       setReviews(StorageService.getReviews());
       setReports(StorageService.getSellerReports());
+      setAppFeedbacks(StorageService.getAppFeedbacks());
       setChats(StorageService.getChats());
     };
 
@@ -99,6 +102,10 @@ export default function App() {
       setReports(StorageService.getSellerReports());
     };
 
+    const handleAppFeedbacksUpdate = () => {
+      setAppFeedbacks(StorageService.getAppFeedbacks());
+    };
+
     const handleUserChanged = () => {
       setCurrentUser(StorageService.getCurrentUser());
     };
@@ -108,6 +115,7 @@ export default function App() {
     window.addEventListener('coneqta_address_updated', handleAddressUpdate);
     window.addEventListener('coneqta_reviews_updated', handleReviewsUpdate);
     window.addEventListener('coneqta_reports_updated', handleReportsUpdate);
+    window.addEventListener('coneqta_app_feedbacks_updated', handleAppFeedbacksUpdate);
     window.addEventListener('coneqta_user_changed', handleUserChanged);
 
     return () => {
@@ -116,9 +124,20 @@ export default function App() {
       window.removeEventListener('coneqta_address_updated', handleAddressUpdate);
       window.removeEventListener('coneqta_reviews_updated', handleReviewsUpdate);
       window.removeEventListener('coneqta_reports_updated', handleReportsUpdate);
+      window.removeEventListener('coneqta_app_feedbacks_updated', handleAppFeedbacksUpdate);
       window.removeEventListener('coneqta_user_changed', handleUserChanged);
     };
   }, []);
+
+  // Load app feedbacks from Supabase when signed in as admin
+  useEffect(() => {
+    if (currentUser?.role === 'admin') {
+      appFeedbacksService
+        .getAllForAdmin()
+        .then((list) => setAppFeedbacks(list))
+        .catch(() => {});
+    }
+  }, [currentUser?.role]);
 
   // Login handler
   const handleLogin = (param1: ActiveRoleOption | AppUser, param2?: AppUser | ActiveRoleOption) => {
@@ -194,6 +213,12 @@ export default function App() {
   const handleUpdateReportStatus = (reportId: string, status: SellerReport['status']) => {
     StorageService.updateSellerReportStatus(reportId, status);
     setReports(StorageService.getSellerReports());
+  };
+
+  // App feedback status update (Admin)
+  const handleUpdateAppFeedbackStatus = (feedbackId: string, status: AppFeedback['status']) => {
+    appFeedbacksService.updateStatus(feedbackId, status);
+    setAppFeedbacks(StorageService.getAppFeedbacks());
   };
 
   // Shared modals for public screens (Search & Ranking)
@@ -437,10 +462,12 @@ export default function App() {
             seals={seals}
             reviews={reviews}
             reports={reports}
+            appFeedbacks={appFeedbacks}
             categories={categories}
             onSaveUser={handleSaveUser}
             onDeleteProduct={handleDeleteProduct}
             onUpdateReportStatus={handleUpdateReportStatus}
+            onUpdateAppFeedbackStatus={handleUpdateAppFeedbackStatus}
             onOpenDiagnostics={() => setIsDiagnosticModalOpen(true)}
           />
         )}

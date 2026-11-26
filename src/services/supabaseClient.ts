@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Producer, Product, Order, ReviewItem, ProducerStory, StoryComment, ChatMessage, AppUser, SealItem, CategoryDef } from '../types';
+import { Producer, Product, Order, ReviewItem, ProducerStory, StoryComment, ChatMessage, AppUser, SealItem, CategoryDef, AppFeedback } from '../types';
 import { StorageService } from './storage';
 
 // Obtém as variáveis de ambiente Vite (ou vazias se ainda não configuradas pelo usuário)
@@ -797,6 +797,91 @@ export const categoriesService = {
       }));
     } catch {
       return StorageService.getCategories();
+    }
+  }
+};
+
+// ==============================================================================
+// 8B. SERVIÇO DE AVALIAÇÕES PRIVADAS DO APLICATIVO (VISÍVEL APENAS AO ADMIN)
+// ==============================================================================
+export const appFeedbacksService = {
+  async add(feedback: AppFeedback): Promise<boolean> {
+    StorageService.addAppFeedback(feedback);
+
+    if (!supabase) {
+      return true;
+    }
+
+    try {
+      const { error } = await supabase.from('app_feedbacks').insert({
+        id: feedback.id,
+        user_id: feedback.userId,
+        user_name: feedback.userName,
+        user_email: feedback.userEmail,
+        user_role: feedback.userRole,
+        user_neighborhood: feedback.userNeighborhood || null,
+        rating: feedback.rating,
+        experience: feedback.experience,
+        comment: feedback.comment || null,
+        suggestion: feedback.suggestion || null,
+        created_at: feedback.createdAt,
+        status: feedback.status
+      });
+      return !error;
+    } catch {
+      return true;
+    }
+  },
+
+  async getAllForAdmin(): Promise<AppFeedback[]> {
+    if (!supabase) {
+      return StorageService.getAppFeedbacks();
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('app_feedbacks')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error || !data) {
+        return StorageService.getAppFeedbacks();
+      }
+
+      return data.map((f: any) => ({
+        id: f.id,
+        userId: f.user_id,
+        userName: f.user_name,
+        userEmail: f.user_email,
+        userRole: f.user_role,
+        userNeighborhood: f.user_neighborhood || undefined,
+        rating: Number(f.rating),
+        experience: f.experience,
+        comment: f.comment || undefined,
+        suggestion: f.suggestion || undefined,
+        createdAt: f.created_at,
+        status: f.status || 'novo'
+      }));
+    } catch {
+      return StorageService.getAppFeedbacks();
+    }
+  },
+
+  async updateStatus(feedbackId: string, status: AppFeedback['status']): Promise<boolean> {
+    StorageService.updateAppFeedbackStatus(feedbackId, status);
+
+    if (!supabase) {
+      return true;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('app_feedbacks')
+        .update({ status })
+        .eq('id', feedbackId);
+      return !error;
+    } catch {
+      return true;
     }
   }
 };

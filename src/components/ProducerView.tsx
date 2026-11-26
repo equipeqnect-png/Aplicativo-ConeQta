@@ -33,7 +33,8 @@ import {
   Store,
   X,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  MessageSquarePlus
 } from 'lucide-react';
 import { Producer, Product, Order, ChatMessage, AppUser, ProducerStory, Category, Certification } from '../types';
 import { ProductFormModal } from './ProductFormModal';
@@ -41,6 +42,7 @@ import { StorageService } from '../services/storage';
 import { StoryPostModal } from './StoryPostModal';
 import { StoryViewerModal } from './StoryViewerModal';
 import { EntrepreneurProfileModal } from './EntrepreneurProfileModal';
+import { AppFeedbackTab } from './AppFeedbackTab';
 
 interface ProducerViewProps {
   currentProducer: Producer;
@@ -67,8 +69,8 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
   onSendMessage,
   onSaveProducer,
 }) => {
-  // Tabs: Catálogo, Stories, Conversas, Propriedade (Aba "Pedidos de Hoje" removida - catálogo de produtos e serviços)
-  const [activeTab, setActiveTab] = useState<'catalogo' | 'stories' | 'conversas' | 'propriedade'>('catalogo');
+  // Tabs: Catálogo, Stories, Conversas, Propriedade, Avaliar Aplicativo
+  const [activeTab, setActiveTab] = useState<'catalogo' | 'stories' | 'conversas' | 'propriedade' | 'feedback'>('catalogo');
 
   // Stories state
   const [producerStories, setProducerStories] = useState<ProducerStory[]>([]);
@@ -450,6 +452,20 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
           >
             <Settings className="w-4 h-4 text-[#D35400]" />
             <span>Editar Dados da Propriedade & Fotos</span>
+          </button>
+
+          {/* AVALIAR APLICATIVO (Privado para Administrador) */}
+          <button
+            id="tab-producer-app-feedback-btn"
+            onClick={() => setActiveTab('feedback')}
+            className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+              activeTab === 'feedback'
+                ? 'border-[#D35400] text-[#D35400] bg-orange-50/40'
+                : 'border-transparent text-stone-600 hover:text-stone-900 hover:bg-stone-50'
+            }`}
+          >
+            <MessageSquarePlus className="w-4 h-4 text-[#D35400]" />
+            <span>Avaliar Aplicativo</span>
           </button>
 
         </div>
@@ -1446,6 +1462,13 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
           </div>
 
         </form>
+      )}
+
+      {/* ==================================================================== */}
+      {/* TAB 5: AVALIAR APLICATIVO (PRIVADO PARA ADMIN)                       */}
+      {/* ==================================================================== */}
+      {activeTab === 'feedback' && currentUser && (
+        <AppFeedbackTab currentUser={currentUser} accentColor="terracotta" />
       )}
 
       {/* Modal for Product Add/Edit */}

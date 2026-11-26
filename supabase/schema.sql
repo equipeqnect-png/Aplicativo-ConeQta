@@ -229,6 +229,22 @@ CREATE TABLE IF NOT EXISTS public.categories (
     color TEXT NOT NULL
 );
 
+-- 3.11. AVALIAÇÕES PRIVADAS DO APLICATIVO (VISÍVEIS APENAS AO ADMINISTRADOR)
+CREATE TABLE IF NOT EXISTS public.app_feedbacks (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    user_email TEXT NOT NULL,
+    user_role TEXT NOT NULL,
+    user_neighborhood TEXT,
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    experience TEXT NOT NULL,
+    comment TEXT,
+    suggestion TEXT,
+    status TEXT DEFAULT 'novo',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ==============================================================================
 -- 4. ÍNDICES DE PERFORMANCE
 -- ==============================================================================
@@ -329,6 +345,7 @@ ALTER TABLE public.story_comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.seals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_feedbacks ENABLE ROW LEVEL SECURITY;
 
 -- 6.1. PROFILES
 CREATE POLICY "Perfis visíveis para todos os autenticados" 
@@ -415,6 +432,20 @@ CREATE POLICY "Envio de mensagens"
 -- 6.8. SELOS E CATEGORIAS
 CREATE POLICY "Selos visíveis para todos" ON public.seals FOR SELECT USING (true);
 CREATE POLICY "Categorias visíveis para todos" ON public.categories FOR SELECT USING (true);
+
+-- 6.9. AVALIAÇÕES PRIVADAS DO APLICATIVO (SOMENTE ADMIN PODE LER)
+CREATE POLICY "Usuários autenticados podem enviar avaliação do app"
+    ON public.app_feedbacks FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Apenas administrador visualiza avaliações do app"
+    ON public.app_feedbacks FOR SELECT USING (
+        auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
+    );
+
+CREATE POLICY "Apenas administrador atualiza status de avaliações do app"
+    ON public.app_feedbacks FOR UPDATE USING (
+        auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
+    );
 
 -- ==============================================================================
 -- ==============================================================================

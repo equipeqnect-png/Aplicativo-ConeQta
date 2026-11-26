@@ -232,3 +232,18 @@ export interface CategoryDef {
   count: number;
   color: string;
 }
+
+export interface AppFeedback {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userRole: 'consumer' | 'producer' | 'admin';
+  userNeighborhood?: string;
+  rating: number; // 1 to 5
+  experience: string;
+  comment?: string;
+  suggestion?: string;
+  createdAt: string;
+  status: 'novo' | 'lido' | 'analisado';
+}

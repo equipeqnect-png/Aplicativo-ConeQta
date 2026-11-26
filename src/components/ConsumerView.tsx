@@ -11,6 +11,7 @@ import {
   MessageCircle,
   ExternalLink,
   Package,
+  MessageSquarePlus,
 } from 'lucide-react';
 import { Product, Producer, AppUser, ProducerStory, ReviewItem, Order } from '../types';
 import { UserAddressConfig, StorageService } from '../services/storage';
@@ -18,6 +19,7 @@ import { StoriesBar } from './StoriesBar';
 import { StoryViewerModal } from './StoryViewerModal';
 import { StoryPostModal } from './StoryPostModal';
 import { RankingView } from './RankingView';
+import { AppFeedbackTab } from './AppFeedbackTab';
 
 interface ConsumerViewProps {
   currentUser: AppUser;
@@ -48,7 +50,7 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
   onOpenProducerProfile,
   onReportProducer,
 }) => {
-  const [activePill, setActivePill] = useState<'catalogo' | 'lojas' | 'ranking' | 'favorites' | 'profile'>('catalogo');
+  const [activePill, setActivePill] = useState<'catalogo' | 'lojas' | 'ranking' | 'favorites' | 'feedback' | 'profile'>('catalogo');
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -196,6 +198,19 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
 
           <button
             type="button"
+            onClick={() => setActivePill('feedback')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activePill === 'feedback'
+                ? 'bg-[#4E553D] text-white shadow-2xs'
+                : 'text-stone-700 hover:bg-stone-100'
+            }`}
+          >
+            <MessageSquarePlus className="w-3.5 h-3.5" />
+            <span>Avaliar Aplicativo</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActivePill('profile')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activePill === 'profile'
@@ -210,7 +225,7 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
       </div>
 
       {/* Stories Carousel Bar */}
-      {activePill !== 'ranking' && (
+      {activePill !== 'ranking' && activePill !== 'feedback' && (
         <StoriesBar
           stories={stories}
           currentUser={currentUser}
@@ -547,6 +562,11 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* VIEW: AVALIAR APLICATIVO (PRIVADO PARA ADMIN) */}
+      {activePill === 'feedback' && currentUser && (
+        <AppFeedbackTab currentUser={currentUser} accentColor="olive" />
       )}
 
       {/* VIEW: PROFILE */}

@@ -1,4 +1,4 @@
-import { Producer, Product, Order, CartItem, AppUser, ChatMessage, SealItem, ReviewItem, CategoryDef, ProducerStory, StoryComment, SellerReport } from '../types';
+import { Producer, Product, Order, CartItem, AppUser, ChatMessage, SealItem, ReviewItem, CategoryDef, ProducerStory, StoryComment, SellerReport, AppFeedback } from '../types';
 import { 
   INITIAL_PRODUCERS, 
   INITIAL_PRODUCTS, 
@@ -20,6 +20,7 @@ const SEALS_KEY = 'coneqta_seals_v3';
 const CATEGORIES_KEY = 'coneqta_categories_v3';
 const REVIEWS_KEY = 'coneqta_reviews_v3';
 const REPORTS_KEY = 'coneqta_reports_v3';
+const APP_FEEDBACKS_KEY = 'coneqta_app_feedbacks_v1';
 const STORIES_KEY = 'coneqta_stories_v3';
 const CHATS_KEY = 'coneqta_chats_v3';
 const FAVORITES_KEY = 'coneqta_favorites_v3';
@@ -467,6 +468,35 @@ export class StorageService {
       localStorage.setItem(REPORTS_KEY, JSON.stringify(reports));
       window.dispatchEvent(new Event('coneqta_storage_updated'));
       window.dispatchEvent(new Event('coneqta_reports_updated'));
+    }
+  }
+
+  // Private App Feedbacks (Visible strictly to Administrator)
+  static getAppFeedbacks(): AppFeedback[] {
+    try {
+      const data = localStorage.getItem(APP_FEEDBACKS_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  static addAppFeedback(feedback: AppFeedback): void {
+    const feedbacks = this.getAppFeedbacks();
+    feedbacks.unshift(feedback);
+    localStorage.setItem(APP_FEEDBACKS_KEY, JSON.stringify(feedbacks));
+    window.dispatchEvent(new Event('coneqta_storage_updated'));
+    window.dispatchEvent(new Event('coneqta_app_feedbacks_updated'));
+  }
+
+  static updateAppFeedbackStatus(feedbackId: string, status: AppFeedback['status']): void {
+    const feedbacks = this.getAppFeedbacks();
+    const item = feedbacks.find(f => f.id === feedbackId);
+    if (item) {
+      item.status = status;
+      localStorage.setItem(APP_FEEDBACKS_KEY, JSON.stringify(feedbacks));
+      window.dispatchEvent(new Event('coneqta_storage_updated'));
+      window.dispatchEvent(new Event('coneqta_app_feedbacks_updated'));
     }
   }
 
