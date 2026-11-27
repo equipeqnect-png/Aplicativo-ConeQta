@@ -70,7 +70,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
 
     const cleanId = identifier.trim().toLowerCase();
+    const cleanDigits = cleanId.replace(/\D/g, '');
     let foundUser: AppUser | undefined;
+    let foundFromServer = false;
 
     // 1. Authenticate against server database first (works across any device & browser)
     try {
@@ -85,6 +87,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         if (apiData?.user) {
           const synced = StorageService.mergeSyncedUsers([apiData.user as AppUser]);
           foundUser = synced.find((u) => u.id === apiData.user.id) || (apiData.user as AppUser);
+          foundFromServer = true;
         }
       } else if (apiResp.status === 401 || apiResp.status === 403) {
         const errData = await apiResp.json().catch(() => ({}));
@@ -95,14 +98,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       // Backend API unreachable; continue to Supabase/local checks
     }
 
-    // 2. Fallback to local storage or Supabase if not yet in server DB (e.g. initial admin seed)
+    // 2. Fallback to local storage or Supabase if not yet in server DB (e.g. initial admin seed or new container)
     if (!foundUser) {
       const currentUsers = StorageService.getUsers();
-      foundUser = currentUsers.find(
-        u => (u.cpf || '').toLowerCase() === cleanId ||
-             (u.email || '').toLowerCase() === cleanId ||
-             (u.name || '').toLowerCase() === cleanId
-      );
+      foundUser = currentUsers.find((u) => {
+        const uCpf = (u.cpf || '').trim().toLowerCase();
+        const uCpfDigits = uCpf.replace(/\D/g, '');
+        return (
+          uCpf === cleanId ||
+          (cleanDigits.length >= 11 && uCpfDigits === cleanDigits) ||
+          (u.email || '').trim().toLowerCase() === cleanId ||
+          (u.name || '').trim().toLowerCase() === cleanId
+        );
+      });
 
       if (!foundUser) {
         if (isSupabaseConfigured() && cleanId.includes('@')) {
@@ -111,7 +119,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             if (supaRes?.user && !supaRes.error) {
               foundUser = supaRes.user as AppUser;
               StorageService.saveUser(foundUser);
-            } else if (supaRes?.error?.toLowerCase().includes('bloqueada')) {
+            } else if (supaRes?.error) {
               setLoginError(supaRes.error);
               return;
             }
@@ -135,6 +143,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             setLoginError('Senha incorreta. Por favor, verifique a senha digitada.');
             return;
           }
+          // Re-sync local user back to backend db.json if container restarted
+          if (!foundFromServer) {
+            fetch('/api/auth/register', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(foundUser),
+            }).catch(() => {});
+          }
         } else if (!isSupabaseConfigured()) {
           setLoginError('Não foi possível validar sua senha. Tente novamente.');
           return;
@@ -146,9 +162,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     if (isSupabaseConfigured() && foundUser.email) {
       try {
         const supaRes = await authService.signIn(foundUser.email, password);
-        if (supaRes?.error?.toLowerCase().includes('bloqueada')) {
-          setLoginError(supaRes.error);
-          return;
+        if (supaRes?.error) {
+          if (
+            supaRes.error.toLowerCase().includes('bloqueada') ||
+            supaRes.error.toLowerCase().includes('confirmação') ||
+            supaRes.error.toLowerCase().includes('confirm')
+          ) {
+            setLoginError(supaRes.error);
+            return;
+          }
         }
         if (supaRes?.user && !supaRes.error) {
           foundUser = {
@@ -212,6 +234,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       let userId = `usr_${Date.now()}`;
       let producerId = regRole === 'producer' ? `prod_${userId}` : undefined;
       let supabaseUserId: string | undefined;
+      let needsEmailConfirmation = false;
 
       const baseNewUser: AppUser = {
         id: userId,
@@ -236,23 +259,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       // 1. Register in Supabase Auth & profiles first when configured so the UUID is canonical across devices
       if (isSupabaseConfigured()) {
-        try {
-          const supaResult = await authService.signUp(cleanEmail, regPassword, baseNewUser);
-          if (supaResult?.error) {
-            const lowerErr = supaResult.error.toLowerCase();
-            if (lowerErr.includes('already registered') || lowerErr.includes('already exists')) {
-              setRegError('Este e-mail já está cadastrado no ConeQta.');
-              setIsSubmitting(false);
-              return;
-            }
-          }
-          if (supaResult?.user?.id) {
-            supabaseUserId = supaResult.user.id;
-            userId = supaResult.user.id;
-            producerId = regRole === 'producer' ? (supaResult.user.producerId || `prod_${userId}`) : undefined;
-          }
-        } catch {
-          // Fallback to server/local registration
+        const supaResult = await authService.signUp(cleanEmail, regPassword, baseNewUser);
+        if (supaResult?.error) {
+          setRegError(supaResult.error);
+          setIsSubmitting(false);
+          return;
+        }
+        if (supaResult?.needsEmailConfirmation) {
+          needsEmailConfirmation = true;
+        }
+        if (supaResult?.user?.id) {
+          supabaseUserId = supaResult.user.id;
+          userId = supaResult.user.id;
+          producerId = regRole === 'producer' ? (supaResult.user.producerId || `prod_${userId}`) : undefined;
         }
       }
 
@@ -282,6 +301,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           if (regData?.user) {
             registeredUser = { ...newUser, ...regData.user };
           }
+        } else if (!isSupabaseConfigured()) {
+          const errData = await regResp.json().catch(() => ({}));
+          setRegError(errData?.error || 'Não foi possível salvar seu cadastro. Tente novamente.');
+          setIsSubmitting(false);
+          return;
         }
       } catch {
         // Fallback to local/Supabase persistence
@@ -296,7 +320,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       // 4. Save user in local storage
       StorageService.saveUser(registeredUser);
 
-      const welcomeNotice = `Cadastro realizado com sucesso para ${registeredUser.email}! Bem-vindo(a) ao ConeQta.`;
+      const welcomeNotice = needsEmailConfirmation
+        ? `Cadastro criado para ${registeredUser.email}! Atenção: no Supabase a confirmação de e-mail está ativa — confirme seu e-mail ou desative "Confirm email" no painel do Supabase para liberar o login em outros dispositivos.`
+        : `Cadastro realizado com sucesso para ${registeredUser.email}! Bem-vindo(a) ao ConeQta.`;
 
       // Log in and route
       if (regRole === 'producer') {

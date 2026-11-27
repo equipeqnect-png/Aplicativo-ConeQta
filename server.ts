@@ -267,6 +267,7 @@ app.post("/api/auth/register", (req, res) => {
   const incoming = req.body || {};
   const cleanEmail = String(incoming.email || "").trim().toLowerCase();
   const cleanCpf = String(incoming.cpf || "").trim().toLowerCase();
+  const cleanCpfDigits = cleanCpf.replace(/\D/g, "");
   const rawPassword = String(incoming.password || "");
 
   if (!incoming.name || !cleanEmail || rawPassword.length < 6) {
@@ -275,11 +276,15 @@ app.post("/api/auth/register", (req, res) => {
     });
   }
 
-  const duplicate = db.users.find(
-    (u: any) =>
-      (u.email && String(u.email).toLowerCase() === cleanEmail) ||
-      (cleanCpf && u.cpf && String(u.cpf).toLowerCase() === cleanCpf)
-  );
+  const duplicate = db.users.find((u: any) => {
+    const emailMatch = u.email && String(u.email).trim().toLowerCase() === cleanEmail;
+    const uCpf = String(u.cpf || "").trim().toLowerCase();
+    const uCpfDigits = uCpf.replace(/\D/g, "");
+    const cpfMatch =
+      (cleanCpf && uCpf === cleanCpf) ||
+      (cleanCpfDigits.length >= 11 && uCpfDigits === cleanCpfDigits);
+    return Boolean(emailMatch || cpfMatch);
+  });
   if (duplicate) {
     return res.status(409).json({
       error: "Este e-mail ou CPF já está cadastrado no ConeQta. Faça login para acessar sua conta.",
@@ -319,18 +324,25 @@ app.post("/api/auth/login", (req, res) => {
   const db = readDb();
   const { identifier, password } = req.body || {};
   const cleanId = String(identifier || "").trim().toLowerCase();
+  const cleanDigits = cleanId.replace(/\D/g, "");
   const rawPassword = String(password || "");
 
   if (!cleanId || !rawPassword) {
     return res.status(400).json({ error: "Informe seu e-mail/CPF e senha." });
   }
 
-  const foundUser = (db.users || []).find(
-    (u: any) =>
-      (u.cpf && String(u.cpf).trim().toLowerCase() === cleanId) ||
-      (u.email && String(u.email).trim().toLowerCase() === cleanId) ||
-      (u.name && String(u.name).trim().toLowerCase() === cleanId)
-  );
+  const foundUser = (db.users || []).find((u: any) => {
+    const uEmail = String(u.email || "").trim().toLowerCase();
+    const uCpf = String(u.cpf || "").trim().toLowerCase();
+    const uCpfDigits = uCpf.replace(/\D/g, "");
+    const uName = String(u.name || "").trim().toLowerCase();
+    return (
+      uEmail === cleanId ||
+      (uCpf && uCpf === cleanId) ||
+      (cleanDigits.length >= 11 && uCpfDigits === cleanDigits) ||
+      (uName && uName === cleanId)
+    );
+  });
 
   if (!foundUser) {
     return res.status(404).json({ code: "NOT_FOUND", error: "Conta não encontrada no banco de dados." });

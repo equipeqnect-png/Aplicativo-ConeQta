@@ -55,6 +55,32 @@ function mapSupabaseProfileToAppUser(prof: any, fallback: Partial<AppUser> = {})
 // ==============================================================================
 // 1. SERVIÇO DE AUTENTICAÇÃO E PERFIS
 // ==============================================================================
+function translateSupabaseAuthError(message?: string): string {
+  const msg = String(message || '').toLowerCase();
+  if (msg.includes('already registered') || msg.includes('already exists')) {
+    return 'Este e-mail já está cadastrado no ConeQta. Faça login para acessar sua conta.';
+  }
+  if (msg.includes('email not confirmed')) {
+    return 'Seu e-mail ainda aguarda confirmação no Supabase. Desative "Confirm email" em Authentication > Providers > Email no painel do Supabase ou confirme pelo link enviado.';
+  }
+  if (msg.includes('invalid login credentials')) {
+    return 'E-mail ou senha incorretos, ou conta ainda não cadastrada no Supabase.';
+  }
+  if (msg.includes('database error saving new user')) {
+    return 'Erro no banco de dados Supabase ao criar o perfil. Execute o script supabase/schema.sql completo no SQL Editor do Supabase.';
+  }
+  if (msg.includes('signups not allowed')) {
+    return 'Novos cadastros estão desativados no painel Authentication do Supabase.';
+  }
+  if (msg.includes('rate limit') || msg.includes('only request this after')) {
+    return 'Muitas tentativas seguidas no Supabase. Aguarde alguns segundos e tente novamente.';
+  }
+  if (msg.includes('password')) {
+    return 'A senha não atende aos requisitos mínimos (mínimo de 6 caracteres).';
+  }
+  return message || 'Erro ao comunicar com o serviço de autenticação.';
+}
+
 export const authService = {
   async signUp(email: string, password: string, userData: Partial<AppUser>) {
     if (!supabase) {
@@ -78,13 +104,16 @@ export const authService = {
       };
       StorageService.saveUser(newUser);
       StorageService.setCurrentUser(newUser);
-      return { user: newUser, error: null, emailSent: false };
+      return { user: newUser, error: null, emailSent: false, needsEmailConfirmation: false };
     }
 
     try {
-      const role = userData.role || 'consumer';
+      const role = userData.role === 'producer' ? 'producer' : 'consumer';
+      const canonicalProducerIdHint =
+        role === 'producer' ? (userData.producerId || userData.farmId || null) : null;
+
       const { data, error } = await supabase.auth.signUp({
-        email,
+        email: email.trim().toLowerCase(),
         password,
         options: {
           data: {
@@ -98,14 +127,31 @@ export const authService = {
             avatar_bg_color: userData.avatarBgColor || '#4E553D',
             cover_bg_color: userData.coverBgColor || '#1F6B38',
             farm_name: userData.farmName || null,
-            producer_id: userData.producerId || null,
+            producer_id: canonicalProducerIdHint,
           }
         }
       });
 
-      if (error) return { user: null, error: error.message, emailSent: false };
+      if (error) {
+        return {
+          user: null,
+          error: translateSupabaseAuthError(error.message),
+          emailSent: false,
+          needsEmailConfirmation: false,
+        };
+      }
 
       if (data.user) {
+        // Supabase Auth returns identities: [] when an email is already registered and confirmation is enabled
+        if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+          return {
+            user: null,
+            error: 'Este e-mail já está cadastrado no ConeQta. Faça login para acessar sua conta.',
+            emailSent: false,
+            needsEmailConfirmation: false,
+          };
+        }
+
         const canonicalProducerId =
           role === 'producer' ? `prod_${data.user.id}` : userData.producerId;
 
@@ -130,28 +176,36 @@ export const authService = {
           });
         }
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', data.user.id)
-          .single();
+        const { data: profile } = data.session
+          ? await supabase.from('profiles').select('*').eq('id', data.user.id).single()
+          : { data: null };
 
         const mappedUser = mapSupabaseProfileToAppUser(
           profile || { id: data.user.id, email: data.user.email },
           {
             ...userData,
             id: data.user.id,
-            email,
+            email: email.trim().toLowerCase(),
             producerId: canonicalProducerId,
             farmId: canonicalProducerId,
           }
         );
 
-        return { user: mappedUser, error: null, emailSent: false };
+        return {
+          user: mappedUser,
+          error: null,
+          emailSent: false,
+          needsEmailConfirmation: !data.session,
+        };
       }
-      return { user: null, error: 'Erro inesperado no cadastro', emailSent: false };
+      return { user: null, error: 'Erro inesperado no cadastro.', emailSent: false, needsEmailConfirmation: false };
     } catch (err: any) {
-      return { user: null, error: err.message || 'Erro de conexão', emailSent: false };
+      return {
+        user: null,
+        error: translateSupabaseAuthError(err?.message),
+        emailSent: false,
+        needsEmailConfirmation: false,
+      };
     }
   },
 
@@ -167,19 +221,51 @@ export const authService = {
     }
 
     try {
+      const cleanEmail = email.trim().toLowerCase();
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: cleanEmail,
         password
       });
 
-      if (error) return { user: null, error: error.message };
+      if (error) return { user: null, error: translateSupabaseAuthError(error.message) };
 
       if (data.user) {
-        const { data: profile } = await supabase
+        let { data: profile } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', data.user.id)
           .single();
+
+        // Auto-heal missing public.profiles row (e.g., if user registered before schema.sql ran)
+        if (!profile) {
+          const meta = data.user.user_metadata || {};
+          const safeRole = meta.role === 'producer' ? 'producer' : 'consumer';
+          const canonicalProdId = safeRole === 'producer' ? (meta.producer_id || `prod_${data.user.id}`) : null;
+          const { data: healed } = await supabase
+            .from('profiles')
+            .upsert({
+              id: data.user.id,
+              email: (data.user.email || cleanEmail).toLowerCase(),
+              name: meta.name || cleanEmail.split('@')[0],
+              cpf: meta.cpf || null,
+              phone: meta.phone || '',
+              role: safeRole,
+              city: meta.city || 'Queimados',
+              neighborhood: meta.neighborhood || 'Queimados',
+              avatar: meta.avatar || '',
+              avatar_bg_color: meta.avatar_bg_color || '#4E553D',
+              cover_bg_color: meta.cover_bg_color || '#1F6B38',
+              farm_name: meta.farm_name || null,
+              producer_id: canonicalProdId,
+              verified: true,
+              status: 'ativo',
+            })
+            .select('*')
+            .single();
+          if (healed) {
+            profile = healed;
+          }
+        }
 
         const mapped = mapSupabaseProfileToAppUser(
           profile || { id: data.user.id, email: data.user.email, ...data.user.user_metadata }
@@ -197,7 +283,7 @@ export const authService = {
       }
       return { user: null, error: 'Credenciais inválidas.' };
     } catch (err: any) {
-      return { user: null, error: err.message || 'Erro de conexão' };
+      return { user: null, error: translateSupabaseAuthError(err?.message) };
     }
   },
 
