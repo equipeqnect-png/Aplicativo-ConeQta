@@ -290,7 +290,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newUser),
         });
-        if (regResp.status === 409) {
+        if (regResp.status === 409 && !supabaseUserId) {
           const errData = await regResp.json().catch(() => ({}));
           setRegError(errData?.error || 'Este e-mail ou CPF já está cadastrado no ConeQta.');
           setIsSubmitting(false);

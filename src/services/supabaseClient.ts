@@ -3,19 +3,20 @@ import { Producer, Product, Order, ReviewItem, ProducerStory, StoryComment, Chat
 import { StorageService, buildProducerFromUser, reconcileProducersWithUsers } from './storage';
 
 // Obtém as variáveis de ambiente Vite (ou vazias se ainda não configuradas pelo usuário)
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+const supabaseUrl = rawSupabaseUrl.replace(/\/rest\/v1\/?$/i, '').replace(/\/+$/, '');
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 export const isSupabaseConfigured = (): boolean => {
-  const normalizedUrl = supabaseUrl.trim().toLowerCase();
-  const normalizedKey = supabaseAnonKey.trim().toLowerCase();
+  const lowerUrl = supabaseUrl.toLowerCase();
+  const lowerKey = supabaseAnonKey.toLowerCase();
   return Boolean(
-    normalizedUrl &&
-    normalizedKey &&
-    normalizedUrl.startsWith('https://') &&
-    !normalizedUrl.includes('seu-projeto') &&
-    !normalizedUrl.includes('seu-id-do-projeto') &&
-    !normalizedKey.includes('sua-chave')
+    lowerUrl &&
+    lowerKey &&
+    lowerUrl.startsWith('https://') &&
+    !lowerUrl.includes('seu-projeto') &&
+    !lowerUrl.includes('seu-id-do-projeto') &&
+    !lowerKey.includes('sua-chave')
   );
 };
 
@@ -774,6 +775,11 @@ export const producersService = {
       }
 
       const { error } = await supabase.from('producers').upsert(row, { onConflict: 'id' });
+      if (error && (error.code === '42703' || error.code === 'PGRST204' || error.message?.includes('bg_color'))) {
+        const { avatar_bg_color: _a, cover_bg_color: _c, ...legacyRow } = row;
+        const { error: retryErr } = await supabase.from('producers').upsert(legacyRow, { onConflict: 'id' });
+        return !retryErr;
+      }
       return !error;
     } catch {
       return false;
@@ -816,6 +822,16 @@ export const producersService = {
         .from('producers')
         .update(updateData)
         .eq('id', id);
+
+      if (error && (error.code === '42703' || error.code === 'PGRST204' || error.message?.includes('bg_color'))) {
+        const { avatar_bg_color: _a, cover_bg_color: _c, ...legacyUpdate } = updateData;
+        if (Object.keys(legacyUpdate).length === 0) return true;
+        const { error: retryErr } = await supabase
+          .from('producers')
+          .update(legacyUpdate)
+          .eq('id', id);
+        return !retryErr;
+      }
 
       return !error;
     } catch {

@@ -127,7 +127,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <Search className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
             </button>
 
-            {/* Item 10: Logged-in user panel redirection only (Entrar sits beside Ver Catálogo in hero) */}
+            {/* Item 10: User status panel redirection when logged in */}
             {currentUser && (
               <button
                 id="landing-icon-app-panel"
@@ -196,12 +196,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
             </div>
 
-            {/* CTA Buttons: VER CATÁLOGO & ENTRAR (ou ACESSAR PAINEL se já logado) com igual destaque */}
-            <div className="pt-2 flex flex-wrap items-center gap-3 sm:gap-4">
+            {/* CTA Buttons: VER CATÁLOGO & ENTRAR (ou ACESSAR PAINEL) em igual destaque */}
+            <div className="pt-2 flex flex-wrap items-center gap-3.5">
               <button
                 id="landing-btn-get-started"
                 onClick={onGetStarted}
-                className="px-8 sm:px-10 py-3.5 sm:py-4 rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600 hover:from-emerald-600 hover:to-teal-500 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-[1.03] active:scale-[0.98] transition-all flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
+                className="px-7 sm:px-9 py-3.5 sm:py-4 rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600 hover:from-emerald-600 hover:to-teal-500 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-[1.03] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>VER CATÁLOGO</span>
                 <ArrowRight className="w-4 h-4" />
@@ -211,19 +211,21 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 <button
                   id="landing-btn-go-to-app"
                   onClick={onNavigateApp}
-                  className="px-8 sm:px-10 py-3.5 sm:py-4 rounded-full bg-stone-900 hover:bg-stone-800 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-stone-900/20 hover:scale-[1.03] active:scale-[0.98] transition-all flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
+                  className="px-7 sm:px-9 py-3.5 sm:py-4 rounded-full bg-[#1F6B38] hover:bg-[#18532B] text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-emerald-950/20 hover:shadow-emerald-950/30 hover:scale-[1.03] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <User className="w-4 h-4 text-lime-300" />
+                  <User className="w-4 h-4" />
                   <span>ACESSAR PAINEL</span>
+                  <ArrowRight className="w-4 h-4" />
                 </button>
               ) : (
                 <button
                   id="landing-btn-login"
                   onClick={onNavigateLogin}
-                  className="px-8 sm:px-10 py-3.5 sm:py-4 rounded-full bg-stone-900 hover:bg-stone-800 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-stone-900/20 hover:scale-[1.03] active:scale-[0.98] transition-all flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
+                  className="px-7 sm:px-9 py-3.5 sm:py-4 rounded-full bg-[#1F6B38] hover:bg-[#18532B] text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-emerald-950/20 hover:shadow-emerald-950/30 hover:scale-[1.03] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <User className="w-4 h-4 text-lime-300" />
+                  <User className="w-4 h-4" />
                   <span>ENTRAR</span>
+                  <ArrowRight className="w-4 h-4" />
                 </button>
               )}
             </div>

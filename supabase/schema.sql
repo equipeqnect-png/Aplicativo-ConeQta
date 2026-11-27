@@ -71,10 +71,16 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 );
 
 -- Garante migração segura em bancos já existentes
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS cpf TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS city TEXT DEFAULT 'Queimados';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS neighborhood TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar TEXT DEFAULT '';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_bg_color TEXT DEFAULT '#4E553D';
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS cover_bg_color TEXT DEFAULT '#1F6B38';
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS farm_name TEXT;
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_bg_color TEXT DEFAULT '#4E553D';
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS producer_id TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS verified BOOLEAN DEFAULT true;
 
 -- 3.2. PRODUTORES / EMPREENDEDORES LOCAIS
 CREATE TABLE IF NOT EXISTS public.producers (
@@ -111,6 +117,9 @@ CREATE TABLE IF NOT EXISTS public.producers (
     category TEXT DEFAULT 'produtos_agricolas',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE public.producers ADD COLUMN IF NOT EXISTS avatar_bg_color TEXT DEFAULT '#4E553D';
+ALTER TABLE public.producers ADD COLUMN IF NOT EXISTS cover_bg_color TEXT DEFAULT '#1F6B38';
 
 -- 3.3. PRODUTOS DISPONÍVEIS
 CREATE TABLE IF NOT EXISTS public.products (
@@ -291,7 +300,11 @@ CREATE OR REPLACE TRIGGER trg_orders_updated_at
 
 -- 5.2. Criar perfil automaticamente no cadastro Supabase Auth
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
     INSERT INTO public.profiles (
         id,
@@ -307,26 +320,28 @@ BEGIN
         cover_bg_color,
         farm_name,
         producer_id,
-        verified
+        verified,
+        status
     )
     VALUES (
         NEW.id,
         NEW.email,
-        COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
-        NEW.raw_user_meta_data->>'cpf',
+        COALESCE(NULLIF(NEW.raw_user_meta_data->>'name', ''), split_part(NEW.email, '@', 1)),
+        NULLIF(NEW.raw_user_meta_data->>'cpf', ''),
         CASE
-            WHEN NEW.raw_user_meta_data->>'role' = 'producer' THEN 'producer'::user_role
-            ELSE 'consumer'::user_role
+            WHEN NEW.raw_user_meta_data->>'role' = 'producer' THEN 'producer'::public.user_role
+            ELSE 'consumer'::public.user_role
         END,
-        NEW.raw_user_meta_data->>'phone',
-        COALESCE(NEW.raw_user_meta_data->>'city', 'Queimados'),
-        COALESCE(NEW.raw_user_meta_data->>'neighborhood', 'Queimados'),
+        COALESCE(NEW.raw_user_meta_data->>'phone', ''),
+        COALESCE(NULLIF(NEW.raw_user_meta_data->>'city', ''), 'Queimados'),
+        COALESCE(NULLIF(NEW.raw_user_meta_data->>'neighborhood', ''), 'Queimados'),
         COALESCE(NEW.raw_user_meta_data->>'avatar', ''),
-        COALESCE(NEW.raw_user_meta_data->>'avatar_bg_color', '#4E553D'),
-        COALESCE(NEW.raw_user_meta_data->>'cover_bg_color', '#1F6B38'),
-        NEW.raw_user_meta_data->>'farm_name',
-        NEW.raw_user_meta_data->>'producer_id',
-        true
+        COALESCE(NULLIF(NEW.raw_user_meta_data->>'avatar_bg_color', ''), '#4E553D'),
+        COALESCE(NULLIF(NEW.raw_user_meta_data->>'cover_bg_color', ''), '#1F6B38'),
+        NULLIF(NEW.raw_user_meta_data->>'farm_name', ''),
+        NULLIF(NEW.raw_user_meta_data->>'producer_id', ''),
+        true,
+        'ativo'::public.user_status
     )
     ON CONFLICT (id) DO UPDATE
     SET 
@@ -343,7 +358,7 @@ BEGIN
         producer_id = COALESCE(EXCLUDED.producer_id, public.profiles.producer_id);
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 -- Disparador no auth.users
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
@@ -401,7 +416,7 @@ RETURNS BOOLEAN AS $$
     SELECT 1 FROM public.profiles
     WHERE id = auth.uid() AND role = 'admin'
   );
-$$ LANGUAGE sql SECURITY DEFINER STABLE;
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public;
 
 -- 6.1. PROFILES (Acesso de listagem restrito ao próprio usuário e ao administrador)
 DROP POLICY IF EXISTS "Usuário vê próprio perfil ou admin vê todos" ON public.profiles;
@@ -442,9 +457,11 @@ CREATE POLICY "Usuário ou admin pode deletar perfil"
     );
 
 -- 6.2. PRODUTORES
+DROP POLICY IF EXISTS "Produtores são públicos para leitura" ON public.producers;
 CREATE POLICY "Produtores são públicos para leitura" 
     ON public.producers FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Produtores podem atualizar seus dados" ON public.producers;
 CREATE POLICY "Produtores podem atualizar seus dados" 
     ON public.producers FOR UPDATE USING (
         auth.uid() = user_id
@@ -453,40 +470,47 @@ CREATE POLICY "Produtores podem atualizar seus dados"
         OR auth.role() IN ('authenticated', 'anon')
     );
 
+DROP POLICY IF EXISTS "Produtores e admins podem deletar loja" ON public.producers;
 CREATE POLICY "Produtores e admins podem deletar loja"
     ON public.producers FOR DELETE USING (
         auth.uid() = user_id
         OR public.is_admin()
     );
 
+DROP POLICY IF EXISTS "Inserção de produtor permitida" ON public.producers;
 CREATE POLICY "Inserção de produtor permitida" 
     ON public.producers FOR INSERT WITH CHECK (true);
 
 -- 6.3. PRODUTOS
+DROP POLICY IF EXISTS "Produtos visíveis para todos" ON public.products;
 CREATE POLICY "Produtos visíveis para todos" 
     ON public.products FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Produtores e admins podem gerenciar produtos" ON public.products;
 CREATE POLICY "Produtores e admins podem gerenciar produtos" 
     ON public.products FOR ALL USING (
         EXISTS (
             SELECT 1 FROM public.producers 
             WHERE producers.id = products.producer_id 
-            AND (producers.user_id = auth.uid() OR auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin'))
+            AND (producers.user_id = auth.uid() OR public.is_admin())
         )
         OR auth.role() = 'anon' -- Permite operações durante testes e protótipos
     );
 
 -- 6.4. PEDIDOS (ORDERS)
+DROP POLICY IF EXISTS "Leitura de pedidos pelo consumidor ou produtor" ON public.orders;
 CREATE POLICY "Leitura de pedidos pelo consumidor ou produtor" 
     ON public.orders FOR SELECT USING (
         auth.uid() = customer_id 
-        OR auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
+        OR public.is_admin()
         OR auth.role() = 'anon'
     );
 
+DROP POLICY IF EXISTS "Qualquer consumidor pode criar pedidos" ON public.orders;
 CREATE POLICY "Qualquer consumidor pode criar pedidos" 
     ON public.orders FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Atualização de status do pedido" ON public.orders;
 CREATE POLICY "Atualização de status do pedido" 
     ON public.orders FOR UPDATE USING (
         auth.uid() = customer_id 
@@ -495,54 +519,69 @@ CREATE POLICY "Atualização de status do pedido"
     );
 
 -- 6.5. AVALIAÇÕES (REVIEWS)
+DROP POLICY IF EXISTS "Avaliações são públicas para leitura" ON public.reviews;
 CREATE POLICY "Avaliações são públicas para leitura" 
     ON public.reviews FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Usuários podem postar avaliações" ON public.reviews;
 CREATE POLICY "Usuários podem postar avaliações" 
     ON public.reviews FOR INSERT WITH CHECK (true);
 
 -- 6.6. STORIES E COMENTÁRIOS
+DROP POLICY IF EXISTS "Stories ativos visíveis para todos" ON public.stories;
 CREATE POLICY "Stories ativos visíveis para todos" 
     ON public.stories FOR SELECT USING (expires_at > NOW());
 
+DROP POLICY IF EXISTS "Produtores podem postar stories" ON public.stories;
 CREATE POLICY "Produtores podem postar stories" 
     ON public.stories FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Produtores podem deletar seus stories" ON public.stories;
 CREATE POLICY "Produtores podem deletar seus stories" 
     ON public.stories FOR DELETE USING (true);
 
+DROP POLICY IF EXISTS "Atualizar likes do story" ON public.stories;
 CREATE POLICY "Atualizar likes do story" 
     ON public.stories FOR UPDATE USING (true);
 
+DROP POLICY IF EXISTS "Comentários de stories públicos para leitura" ON public.story_comments;
 CREATE POLICY "Comentários de stories públicos para leitura" 
     ON public.story_comments FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Inserir comentários de stories" ON public.story_comments;
 CREATE POLICY "Inserir comentários de stories" 
     ON public.story_comments FOR INSERT WITH CHECK (true);
 
 -- 6.7. MENSAGENS DE CHAT
+DROP POLICY IF EXISTS "Visualização de mensagens pelos participantes" ON public.chat_messages;
 CREATE POLICY "Visualização de mensagens pelos participantes" 
     ON public.chat_messages FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Envio de mensagens" ON public.chat_messages;
 CREATE POLICY "Envio de mensagens" 
     ON public.chat_messages FOR INSERT WITH CHECK (true);
 
 -- 6.8. SELOS E CATEGORIAS
+DROP POLICY IF EXISTS "Selos visíveis para todos" ON public.seals;
 CREATE POLICY "Selos visíveis para todos" ON public.seals FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Categorias visíveis para todos" ON public.categories;
 CREATE POLICY "Categorias visíveis para todos" ON public.categories FOR SELECT USING (true);
 
 -- 6.9. AVALIAÇÕES PRIVADAS DO APLICATIVO (SOMENTE ADMIN PODE LER)
+DROP POLICY IF EXISTS "Usuários autenticados podem enviar avaliação do app" ON public.app_feedbacks;
 CREATE POLICY "Usuários autenticados podem enviar avaliação do app"
     ON public.app_feedbacks FOR INSERT WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Apenas administrador visualiza avaliações do app" ON public.app_feedbacks;
 CREATE POLICY "Apenas administrador visualiza avaliações do app"
     ON public.app_feedbacks FOR SELECT USING (
-        auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
+        public.is_admin()
     );
 
+DROP POLICY IF EXISTS "Apenas administrador atualiza status de avaliações do app" ON public.app_feedbacks;
 CREATE POLICY "Apenas administrador atualiza status de avaliações do app"
     ON public.app_feedbacks FOR UPDATE USING (
-        auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
+        public.is_admin()
     );
 
 -- ==============================================================================
