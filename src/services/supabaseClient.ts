@@ -27,7 +27,7 @@ export const authService = {
   async signUp(email: string, password: string, userData: Partial<AppUser>) {
     if (!supabase) {
       const newUser: AppUser = {
-        id: `usr_${Date.now()}`,
+        id: userData.id || `usr_${Date.now()}`,
         email,
         name: userData.name || email.split('@')[0],
         role: userData.role || 'consumer',
@@ -48,12 +48,10 @@ export const authService = {
     }
 
     try {
-      const emailRedirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          emailRedirectTo,
           data: {
             name: userData.name,
             role: userData.role || 'consumer',
@@ -74,7 +72,7 @@ export const authService = {
           .eq('id', data.user.id)
           .single();
 
-        return { user: profile || data.user, error: null, emailSent: true };
+        return { user: profile || data.user, error: null, emailSent: false };
       }
       return { user: null, error: 'Erro inesperado no cadastro', emailSent: false };
     } catch (err: any) {
@@ -533,7 +531,9 @@ export const producersService = {
         bio: producer.bio || '',
         story: producer.story || '',
         avatar: producer.avatar || '',
+        avatar_bg_color: producer.avatarBgColor || '#4E553D',
         cover_image: producer.coverImage || '',
+        cover_bg_color: producer.coverBgColor || '#1F6B38',
         gallery_images: producer.galleryImages || [],
         city: producer.location?.city || 'Queimados',
         state: producer.location?.state || 'RJ',
@@ -587,7 +587,9 @@ export const producersService = {
       if (updates.phone !== undefined) updateData.phone = updates.phone;
       if (updates.whatsapp !== undefined) updateData.whatsapp = updates.whatsapp;
       if (updates.avatar !== undefined) updateData.avatar = updates.avatar;
+      if (updates.avatarBgColor !== undefined) updateData.avatar_bg_color = updates.avatarBgColor;
       if (updates.coverImage !== undefined) updateData.cover_image = updates.coverImage;
+      if (updates.coverBgColor !== undefined) updateData.cover_bg_color = updates.coverBgColor;
       if (updates.galleryImages !== undefined) updateData.gallery_images = updates.galleryImages;
       if (updates.location?.address !== undefined) updateData.address = updates.location.address;
       if (updates.location?.neighborhood !== undefined) updateData.neighborhood = updates.location.neighborhood;

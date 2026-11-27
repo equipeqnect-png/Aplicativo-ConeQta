@@ -472,16 +472,20 @@ export class StorageService {
 
       if (existing) {
         byKey.set(existing.id, {
-          ...r,
           ...existing,
+          ...r,
           name: r.name || existing.name,
           email: r.email || existing.email,
           phone: r.phone || existing.phone,
           neighborhood: r.neighborhood || existing.neighborhood,
           role: r.role || existing.role,
           status: r.status || existing.status,
-          avatar: existing.avatar || r.avatar,
-          avatarBgColor: existing.avatarBgColor || r.avatarBgColor,
+          avatar: r.avatar !== undefined ? r.avatar : existing.avatar,
+          avatarBgColor: r.avatarBgColor || existing.avatarBgColor,
+          coverBgColor: r.coverBgColor || existing.coverBgColor,
+          farmName: r.farmName || existing.farmName,
+          producerId: r.producerId || existing.producerId,
+          farmId: r.farmId || existing.farmId,
           password: existing.password || r.password,
         });
       } else {

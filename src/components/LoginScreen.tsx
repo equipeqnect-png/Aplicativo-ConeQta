@@ -266,26 +266,27 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         // Fallback to local/Supabase persistence
       }
 
-      // 2. Attempt Supabase sign up if configured
+      // 2. Sync with Supabase Auth only when configured (avoids duplicate local records)
       let supabaseUserId: string | undefined;
-      let supabaseEmailSent = false;
-      try {
-        const supaResult = await authService.signUp(registeredUser.email, regPassword, {
-          name: registeredUser.name,
-          role: registeredUser.role,
-          phone: registeredUser.phone,
-          city: registeredUser.city,
-          neighborhood: registeredUser.neighborhood,
-          producerId,
-          farmId: producerId,
-          farmName: registeredUser.farmName,
-        });
-        if (supaResult?.user?.id) {
-          supabaseUserId = supaResult.user.id;
+      if (isSupabaseConfigured()) {
+        try {
+          const supaResult = await authService.signUp(registeredUser.email, regPassword, {
+            id: registeredUser.id,
+            name: registeredUser.name,
+            role: registeredUser.role,
+            phone: registeredUser.phone,
+            city: registeredUser.city,
+            neighborhood: registeredUser.neighborhood,
+            producerId,
+            farmId: producerId,
+            farmName: registeredUser.farmName,
+          });
+          if (supaResult?.user?.id) {
+            supabaseUserId = supaResult.user.id;
+          }
+        } catch {
+          // Fallback to local/backend session
         }
-        supabaseEmailSent = Boolean(supaResult?.emailSent);
-      } catch {
-        // Fallback to local session if Supabase not yet configured
       }
 
       // 3. If registering as a seller, create and persist Seller/Producer profile globally
@@ -297,37 +298,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       // 4. Save user in local storage
       StorageService.saveUser(registeredUser);
 
-      // Dispatch welcome & registration confirmation email via backend API
-      let apiEmailSent = false;
-      try {
-        const emailResp = await fetch('/api/auth/welcome-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: newUser.name,
-            email: newUser.email,
-            role: newUser.role,
-            neighborhood: newUser.neighborhood,
-          }),
-        });
-        if (emailResp.ok) {
-          const emailData = await emailResp.json();
-          apiEmailSent = Boolean(emailData?.sent);
-        }
-      } catch {
-        // Continue login even if mail server is unreachable
-      }
-
-      const welcomeNotice =
-        apiEmailSent || supabaseEmailSent
-          ? `Cadastro realizado com sucesso! Enviamos um e-mail de boas-vindas e confirmação para ${newUser.email}.`
-          : `Cadastro realizado com sucesso para ${newUser.email}! Bem-vindo(a) ao ConeQta.`;
+      const welcomeNotice = `Cadastro realizado com sucesso para ${registeredUser.email}! Bem-vindo(a) ao ConeQta.`;
 
       // Log in and route
       if (regRole === 'producer') {
-        onLogin('producer', newUser, welcomeNotice);
+        onLogin('producer', registeredUser, welcomeNotice);
       } else {
-        onLogin('consumer', newUser, welcomeNotice);
+        onLogin('consumer', registeredUser, welcomeNotice);
       }
     } catch (err: any) {
       setRegError(err?.message || 'Erro ao criar conta. Tente novamente.');

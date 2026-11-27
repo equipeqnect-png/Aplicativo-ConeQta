@@ -173,6 +173,21 @@ export default function App() {
       setWelcomeNotice('');
     }
     setActiveScreen('dashboard');
+
+    // Sync latest saved stores/catalog from backend/Supabase for seamless cross-device access
+    producersService
+      .getAll()
+      .then((syncedProducers) => {
+        setProducers(reconcileProducersWithUsers(syncedProducers, StorageService.getUsers()));
+      })
+      .catch(() => {});
+
+    productsService
+      .getAll()
+      .then((syncedProducts) => {
+        setProducts(syncedProducts);
+      })
+      .catch(() => {});
   };
 
   // Logout handler (returns to landing page)

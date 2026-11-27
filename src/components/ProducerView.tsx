@@ -240,6 +240,8 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
         name: producerName.trim() || currentUser.name,
         phone: phone.trim() || currentUser.phone,
         farmName: farmName.trim() || currentUser.farmName,
+        city: city.trim() || currentUser.city,
+        neighborhood: neighborhood.trim() || currentUser.neighborhood,
         avatar: avatar.trim(),
         avatarBgColor,
         coverBgColor,
