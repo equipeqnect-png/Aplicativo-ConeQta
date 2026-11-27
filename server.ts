@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
@@ -23,6 +24,7 @@ interface DbSchema {
   users: any[];
   reviews?: any[];
   stories?: any[];
+  deletedUserIds?: string[];
 }
 
 const DEFAULT_DB: DbSchema = {
@@ -32,7 +34,34 @@ const DEFAULT_DB: DbSchema = {
   users: [],
   reviews: [],
   stories: [],
+  deletedUserIds: [],
 };
+
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const derived = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${derived}`;
+}
+
+function verifyPassword(password: string, storedHash?: string): boolean {
+  if (!storedHash || !storedHash.includes(":")) return false;
+  const [salt, keyHex] = storedHash.split(":");
+  if (!salt || !keyHex) return false;
+  try {
+    const keyBuf = Buffer.from(keyHex, "hex");
+    const derivedBuf = crypto.scryptSync(password, salt, 64);
+    if (keyBuf.length !== derivedBuf.length) return false;
+    return crypto.timingSafeEqual(keyBuf, derivedBuf);
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeUser(user: any) {
+  if (!user) return user;
+  const { password: _pw, passwordHash: _hash, ...safe } = user;
+  return safe;
+}
 
 const FAKE_PRODUCER_IDS = new Set(["prod_vivian", "prod_leo"]);
 const FAKE_USER_IDS = new Set(["usr_vivian", "usr_leo", "usr_julia"]);
@@ -182,7 +211,7 @@ app.delete("/api/producers/:id", (req, res) => {
 // Database API Endpoints for Registered Users (safe fields only on GET)
 app.get("/api/users", (_req, res) => {
   const db = readDb();
-  const safeUsers = (db.users || []).map(({ password: _pw, ...rest }) => rest);
+  const safeUsers = (db.users || []).map((u: any) => sanitizeUser(u));
   res.json(safeUsers);
 });
 
@@ -193,12 +222,30 @@ app.post("/api/users", (req, res) => {
   if (!incoming || !incoming.id) {
     return res.status(400).json({ error: "Dados de usuário inválidos" });
   }
-  const { password: _pw, ...safeUser } = incoming;
-  const idx = db.users.findIndex((u: any) => u.id === incoming.id || (u.email && incoming.email && u.email.toLowerCase() === incoming.email.toLowerCase()));
+  const { password, passwordHash: _ignoredHash, ...safeUser } = incoming;
+  const idx = db.users.findIndex(
+    (u: any) =>
+      u.id === incoming.id ||
+      (u.email && incoming.email && String(u.email).toLowerCase() === String(incoming.email).toLowerCase())
+  );
+
   if (idx >= 0) {
-    db.users[idx] = { ...db.users[idx], ...safeUser };
+    const existing = db.users[idx];
+    db.users[idx] = {
+      ...existing,
+      ...safeUser,
+      passwordHash: existing.passwordHash || (password ? hashPassword(String(password)) : undefined),
+    };
   } else {
-    db.users.unshift(safeUser);
+    db.users.unshift({
+      ...safeUser,
+      ...(password ? { passwordHash: hashPassword(String(password)) } : {}),
+    });
+  }
+
+  // Ensure re-registered user is not blocked by deletedUserIds
+  if (Array.isArray(db.deletedUserIds)) {
+    db.deletedUserIds = db.deletedUserIds.filter((id) => id !== incoming.id);
   }
 
   // Automatically create seller entry if role === 'producer'
@@ -211,7 +258,180 @@ app.post("/api/users", (req, res) => {
   }
 
   writeDb(db);
-  res.json({ success: true, user: safeUser });
+  res.json({ success: true, user: sanitizeUser(idx >= 0 ? db.users[idx] : safeUser) });
+});
+
+// Register account with persistent server-side scrypt password hash (cross-device login)
+app.post("/api/auth/register", (req, res) => {
+  const db = readDb();
+  db.users = db.users || [];
+  const incoming = req.body || {};
+  const cleanEmail = String(incoming.email || "").trim().toLowerCase();
+  const cleanCpf = String(incoming.cpf || "").trim().toLowerCase();
+  const rawPassword = String(incoming.password || "");
+
+  if (!incoming.name || !cleanEmail || rawPassword.length < 6) {
+    return res.status(400).json({
+      error: "Nome, e-mail válido e senha com pelo menos 6 caracteres são obrigatórios.",
+    });
+  }
+
+  const duplicate = db.users.find(
+    (u: any) =>
+      (u.email && String(u.email).toLowerCase() === cleanEmail) ||
+      (cleanCpf && u.cpf && String(u.cpf).toLowerCase() === cleanCpf)
+  );
+  if (duplicate) {
+    return res.status(409).json({
+      error: "Este e-mail ou CPF já está cadastrado no ConeQta. Faça login para acessar sua conta.",
+    });
+  }
+
+  const { password: _pw, passwordHash: _ph, ...userFields } = incoming;
+  const userId = incoming.id || `usr_${Date.now()}`;
+  const newUserRecord = {
+    ...userFields,
+    id: userId,
+    email: cleanEmail,
+    status: incoming.status || "ativo",
+    verified: incoming.verified ?? true,
+    passwordHash: hashPassword(rawPassword),
+  };
+
+  db.users.unshift(newUserRecord);
+  if (Array.isArray(db.deletedUserIds)) {
+    db.deletedUserIds = db.deletedUserIds.filter((id) => id !== userId);
+  }
+
+  if (newUserRecord.role === "producer") {
+    db.producers = db.producers || [];
+    const targetId = newUserRecord.producerId || newUserRecord.farmId || `prod_${userId}`;
+    if (!db.producers.some((p: any) => p.id === targetId)) {
+      db.producers.unshift(buildProducerFromServerUser(newUserRecord));
+    }
+  }
+
+  writeDb(db);
+  res.json({ success: true, user: sanitizeUser(newUserRecord) });
+});
+
+// Authenticate user from any device against persisted database
+app.post("/api/auth/login", (req, res) => {
+  const db = readDb();
+  const { identifier, password } = req.body || {};
+  const cleanId = String(identifier || "").trim().toLowerCase();
+  const rawPassword = String(password || "");
+
+  if (!cleanId || !rawPassword) {
+    return res.status(400).json({ error: "Informe seu e-mail/CPF e senha." });
+  }
+
+  const foundUser = (db.users || []).find(
+    (u: any) =>
+      (u.cpf && String(u.cpf).trim().toLowerCase() === cleanId) ||
+      (u.email && String(u.email).trim().toLowerCase() === cleanId) ||
+      (u.name && String(u.name).trim().toLowerCase() === cleanId)
+  );
+
+  if (!foundUser) {
+    return res.status(404).json({ code: "NOT_FOUND", error: "Conta não encontrada no banco de dados." });
+  }
+
+  if (foundUser.status === "bloqueado") {
+    return res.status(403).json({
+      code: "BLOCKED",
+      error: "Esta conta está temporariamente bloqueada pelo administrador.",
+    });
+  }
+
+  if (!foundUser.passwordHash || !verifyPassword(rawPassword, foundUser.passwordHash)) {
+    return res.status(401).json({
+      code: "INVALID_PASSWORD",
+      error: "Senha incorreta. Por favor, verifique a senha digitada.",
+    });
+  }
+
+  return res.json({ success: true, user: sanitizeUser(foundUser) });
+});
+
+// Update email, phone, and/or password persistently across devices
+app.post("/api/auth/update-credentials", (req, res) => {
+  const db = readDb();
+  db.users = db.users || [];
+  const { userId, currentPassword, email, phone, password, userSnapshot } = req.body || {};
+  if (!userId) {
+    return res.status(400).json({ error: "Usuário inválido." });
+  }
+
+  let idx = db.users.findIndex((u: any) => u.id === userId);
+  if (idx < 0 && userSnapshot) {
+    const { password: _pw, passwordHash: _ph, ...safeSnap } = userSnapshot;
+    db.users.unshift({
+      ...safeSnap,
+      id: userId,
+      ...(currentPassword ? { passwordHash: hashPassword(String(currentPassword)) } : {}),
+    });
+    idx = 0;
+  }
+
+  if (idx < 0) {
+    return res.status(404).json({ error: "Conta não encontrada." });
+  }
+
+  const existing = db.users[idx];
+  const nextEmail = email !== undefined ? String(email).trim().toLowerCase() : existing.email;
+  const emailChanged = Boolean(email !== undefined && nextEmail !== String(existing.email || "").toLowerCase());
+
+  if ((emailChanged || password) && existing.passwordHash) {
+    if (!currentPassword || !verifyPassword(String(currentPassword), existing.passwordHash)) {
+      return res.status(401).json({ error: "A senha atual informada está incorreta." });
+    }
+  }
+
+  if (emailChanged) {
+    const duplicate = db.users.find(
+      (u: any) => u.id !== userId && u.email && String(u.email).toLowerCase() === nextEmail
+    );
+    if (duplicate) {
+      return res.status(409).json({ error: "Este e-mail já está em uso por outra conta no ConeQta." });
+    }
+  }
+
+  if (password && String(password).length < 6) {
+    return res.status(400).json({ error: "A nova senha deve ter pelo menos 6 caracteres." });
+  }
+
+  const nextPhone = phone !== undefined ? String(phone).trim() : existing.phone;
+  const updatedRecord = {
+    ...existing,
+    email: nextEmail,
+    phone: nextPhone,
+    ...(password ? { passwordHash: hashPassword(String(password)) } : {}),
+  };
+
+  db.users[idx] = updatedRecord;
+
+  if (updatedRecord.role === "producer" && phone !== undefined) {
+    const targetProducerId = updatedRecord.producerId || updatedRecord.farmId || `prod_${updatedRecord.id}`;
+    const pIdx = (db.producers || []).findIndex(
+      (p: any) => p.id === targetProducerId || p.id === updatedRecord.id
+    );
+    if (pIdx >= 0) {
+      const numericPhone = String(nextPhone).replace(/\D/g, "");
+      db.producers[pIdx] = {
+        ...db.producers[pIdx],
+        phone: nextPhone,
+        whatsapp: numericPhone
+          ? numericPhone.startsWith("55")
+            ? numericPhone
+            : `55${numericPhone}`
+          : "",
+      };
+    }
+  }
+
+  writeDb(db);
+  return res.json({ success: true, user: sanitizeUser(updatedRecord) });
 });
 
 app.delete("/api/users/:id", (req, res) => {
@@ -229,6 +449,8 @@ app.delete("/api/users/:id", (req, res) => {
     if (emailQuery && u.email && String(u.email).toLowerCase() === emailQuery) return false;
     return true;
   });
+
+  db.deletedUserIds = Array.from(new Set([...(db.deletedUserIds || []), userId]));
 
   const prodIds = new Set<string>([`prod_${userId}`, userId]);
   if (producerIdQuery) prodIds.add(producerIdQuery);

@@ -356,20 +356,32 @@ ALTER TABLE public.seals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_feedbacks ENABLE ROW LEVEL SECURITY;
 
--- 6.1. PROFILES
-CREATE POLICY "Perfis visíveis para todos os autenticados" 
-    ON public.profiles FOR SELECT USING (true);
+-- Helper para evitar recursão de RLS ao verificar papel de administrador
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
+-- 6.1. PROFILES (Acesso de listagem restrito ao próprio usuário e ao administrador)
+CREATE POLICY "Usuário vê próprio perfil ou admin vê todos" 
+    ON public.profiles FOR SELECT USING (
+        auth.uid() = id
+        OR public.is_admin()
+    );
 
 CREATE POLICY "Usuário pode atualizar seu próprio perfil" 
     ON public.profiles FOR UPDATE USING (
         auth.uid() = id
-        OR auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
+        OR public.is_admin()
     );
 
 CREATE POLICY "Usuário ou admin pode deletar perfil"
     ON public.profiles FOR DELETE USING (
         auth.uid() = id
-        OR auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
+        OR public.is_admin()
     );
 
 -- 6.2. PRODUTORES
@@ -380,14 +392,14 @@ CREATE POLICY "Produtores podem atualizar seus dados"
     ON public.producers FOR UPDATE USING (
         auth.uid() = user_id
         OR user_id IS NULL
-        OR auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
+        OR public.is_admin()
         OR auth.role() IN ('authenticated', 'anon')
     );
 
 CREATE POLICY "Produtores e admins podem deletar loja"
     ON public.producers FOR DELETE USING (
         auth.uid() = user_id
-        OR auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
+        OR public.is_admin()
     );
 
 CREATE POLICY "Inserção de produtor permitida" 

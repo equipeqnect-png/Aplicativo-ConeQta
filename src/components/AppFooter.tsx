@@ -3,10 +3,11 @@ import { Database, ShieldCheck } from 'lucide-react';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 
 interface AppFooterProps {
+  isAdmin?: boolean;
   onOpenDiagnostics?: () => void;
 }
 
-export const AppFooter: React.FC<AppFooterProps> = ({ onOpenDiagnostics }) => {
+export const AppFooter: React.FC<AppFooterProps> = ({ isAdmin = false, onOpenDiagnostics }) => {
   const isConfigured = isSupabaseConfigured();
 
   return (
@@ -25,28 +26,30 @@ export const AppFooter: React.FC<AppFooterProps> = ({ onOpenDiagnostics }) => {
           </p>
         </div>
 
-        {/* Center / Right: Supabase Connection Badge & Action */}
+        {/* Center / Right: Supabase Connection Badge (Admin Only) & Location */}
         <div className="flex flex-wrap items-center justify-center gap-3">
-          <button
-            onClick={onOpenDiagnostics}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-white/10 hover:bg-white/15 border border-white/15 transition-all text-stone-200"
-            title="Clique para diagnosticar e verificar a conexão com o Supabase"
-          >
-            <Database className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Banco de Dados:</span>
-            {isConfigured ? (
-              <span className="inline-flex items-center gap-1 text-emerald-300 font-bold">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                Supabase Ativo
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-amber-300 font-bold">
-                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                Modo Local
-              </span>
-            )}
-            <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full text-white">Testar</span>
-          </button>
+          {isAdmin && onOpenDiagnostics && (
+            <button
+              onClick={onOpenDiagnostics}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold bg-white/10 hover:bg-white/15 border border-white/15 transition-all text-stone-200 cursor-pointer"
+              title="Clique para diagnosticar e verificar a conexão com o Supabase (exclusivo do administrador)"
+            >
+              <Database className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Banco de Dados:</span>
+              {isConfigured ? (
+                <span className="inline-flex items-center gap-1 text-emerald-300 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Supabase Ativo
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-amber-300 font-bold">
+                  <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                  Modo Local
+                </span>
+              )}
+              <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full text-white">Testar</span>
+            </button>
+          )}
 
           <div className="text-xs text-stone-400 text-center md:text-right">
             <span>Queimados, Baixada Fluminense - RJ</span>

@@ -17,11 +17,13 @@ import { checkSupabaseConnection, isSupabaseConfigured, SupabaseDiagnosticResult
 
 interface SupabaseDiagnosticModalProps {
   isOpen: boolean;
+  isAdmin?: boolean;
   onClose: () => void;
 }
 
 export const SupabaseDiagnosticModal: React.FC<SupabaseDiagnosticModalProps> = ({
   isOpen,
+  isAdmin = false,
   onClose
 }) => {
   const [loading, setLoading] = useState(false);
@@ -29,9 +31,10 @@ export const SupabaseDiagnosticModal: React.FC<SupabaseDiagnosticModalProps> = (
   const [activeTab, setActiveTab] = useState<'status' | 'passo_a_passo'>('status');
 
   const runTest = async () => {
+    if (!isAdmin) return;
     setLoading(true);
     try {
-      const res = await checkSupabaseConnection();
+      const res = await checkSupabaseConnection(true);
       setResult(res);
     } catch (err: any) {
       setResult({
@@ -48,12 +51,12 @@ export const SupabaseDiagnosticModal: React.FC<SupabaseDiagnosticModalProps> = (
   };
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && isAdmin) {
       runTest();
     }
-  }, [isOpen]);
+  }, [isOpen, isAdmin]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !isAdmin) return null;
 
   const isConfigured = isSupabaseConfigured();
 

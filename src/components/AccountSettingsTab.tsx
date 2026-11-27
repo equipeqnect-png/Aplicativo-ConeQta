@@ -170,12 +170,17 @@ export const AccountSettingsTab: React.FC<AccountSettingsTabProps> = ({
         setContactError('Informe sua senha atual correta para confirmar a alteração do e-mail.');
         return;
       }
+      if (!hasStoredPassword && !contactPasswordConfirm) {
+        setContactError('Informe sua senha atual para confirmar a alteração do e-mail.');
+        return;
+      }
     }
 
     setContactSaving(true);
     const result = await authService.updateUserCredentials(currentUser, {
       email: trimmedEmail,
       phone: trimmedPhone,
+      currentPassword: contactPasswordConfirm || currentUser.password,
     });
     setContactSaving(false);
 
@@ -202,6 +207,10 @@ export const AccountSettingsTab: React.FC<AccountSettingsTabProps> = ({
       setPasswordError('A senha atual informada está incorreta.');
       return;
     }
+    if (!hasStoredPassword && !currentPassword) {
+      setPasswordError('Informe sua senha atual para definir uma nova senha.');
+      return;
+    }
 
     if (newPassword.length < 6) {
       setPasswordError('A nova senha deve ter pelo menos 6 caracteres.');
@@ -213,7 +222,7 @@ export const AccountSettingsTab: React.FC<AccountSettingsTabProps> = ({
       return;
     }
 
-    if (hasStoredPassword && newPassword === currentUser.password) {
+    if (newPassword === currentPassword || (hasStoredPassword && newPassword === currentUser.password)) {
       setPasswordError('A nova senha precisa ser diferente da senha atual.');
       return;
     }
@@ -221,6 +230,7 @@ export const AccountSettingsTab: React.FC<AccountSettingsTabProps> = ({
     setPasswordSaving(true);
     const result = await authService.updateUserCredentials(currentUser, {
       password: newPassword,
+      currentPassword,
     });
     setPasswordSaving(false);
 
@@ -243,6 +253,26 @@ export const AccountSettingsTab: React.FC<AccountSettingsTabProps> = ({
     if (hasStoredPassword && deletePasswordConfirm !== currentUser.password) {
       setDeleteError('A senha atual informada está incorreta.');
       return;
+    }
+
+    if (!hasStoredPassword) {
+      if (!deletePasswordConfirm) {
+        setDeleteError('Informe sua senha atual para confirmar a exclusão da conta.');
+        return;
+      }
+      try {
+        const verifyResp = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: currentUser.email, password: deletePasswordConfirm }),
+        });
+        if (verifyResp.status === 401) {
+          setDeleteError('A senha atual informada está incorreta.');
+          return;
+        }
+      } catch {
+        // allow fallback if offline
+      }
     }
 
     if (deleteConfirmText.trim().toUpperCase() !== 'DELETAR') {
@@ -423,7 +453,7 @@ export const AccountSettingsTab: React.FC<AccountSettingsTabProps> = ({
           </div>
         </div>
 
-        {emailChanged && hasStoredPassword && (
+        {emailChanged && (
           <div className="p-4 bg-stone-50 border border-stone-200 rounded-2xl space-y-2">
             <label className="block text-xs font-bold text-stone-700">
               Confirme sua senha atual para alterar o e-mail
@@ -492,34 +522,32 @@ export const AccountSettingsTab: React.FC<AccountSettingsTabProps> = ({
         </div>
 
         <div className="space-y-4">
-          {hasStoredPassword && (
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-stone-700">Senha Atual</label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-                <input
-                  type={showCurrentPw ? 'text' : 'password'}
-                  required
-                  value={currentPassword}
-                  onChange={(e) => {
-                    setCurrentPassword(e.target.value);
-                    setPasswordError('');
-                    setPasswordSuccess('');
-                  }}
-                  placeholder="Digite sua senha atual"
-                  className="w-full pl-10 pr-10 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:outline-hidden focus:border-stone-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowCurrentPw((v) => !v)}
-                  className="absolute right-3 top-2.5 text-stone-400 hover:text-stone-700 cursor-pointer"
-                  aria-label="Mostrar ou ocultar senha atual"
-                >
-                  {showCurrentPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-stone-700">Senha Atual</label>
+            <div className="relative">
+              <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+              <input
+                type={showCurrentPw ? 'text' : 'password'}
+                required
+                value={currentPassword}
+                onChange={(e) => {
+                  setCurrentPassword(e.target.value);
+                  setPasswordError('');
+                  setPasswordSuccess('');
+                }}
+                placeholder="Digite sua senha atual"
+                className="w-full pl-10 pr-10 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:outline-hidden focus:border-stone-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowCurrentPw((v) => !v)}
+                className="absolute right-3 top-2.5 text-stone-400 hover:text-stone-700 cursor-pointer"
+                aria-label="Mostrar ou ocultar senha atual"
+              >
+                {showCurrentPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
-          )}
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -648,33 +676,31 @@ export const AccountSettingsTab: React.FC<AccountSettingsTabProps> = ({
               Confirmação necessária para excluir sua conta permanentemente:
             </div>
 
-            {hasStoredPassword && (
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-stone-700">Sua Senha Atual</label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-                  <input
-                    type={showDeletePw ? 'text' : 'password'}
-                    required
-                    value={deletePasswordConfirm}
-                    onChange={(e) => {
-                      setDeletePasswordConfirm(e.target.value);
-                      setDeleteError('');
-                    }}
-                    placeholder="Confirme sua senha atual"
-                    className="w-full pl-10 pr-10 py-2.5 bg-white border border-red-200 rounded-xl text-xs text-stone-900 focus:outline-hidden focus:border-red-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowDeletePw((v) => !v)}
-                    className="absolute right-3 top-2.5 text-stone-400 hover:text-stone-700 cursor-pointer"
-                    aria-label="Mostrar ou ocultar senha"
-                  >
-                    {showDeletePw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-stone-700">Sua Senha Atual</label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                <input
+                  type={showDeletePw ? 'text' : 'password'}
+                  required
+                  value={deletePasswordConfirm}
+                  onChange={(e) => {
+                    setDeletePasswordConfirm(e.target.value);
+                    setDeleteError('');
+                  }}
+                  placeholder="Confirme sua senha atual"
+                  className="w-full pl-10 pr-10 py-2.5 bg-white border border-red-200 rounded-xl text-xs text-stone-900 focus:outline-hidden focus:border-red-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowDeletePw((v) => !v)}
+                  className="absolute right-3 top-2.5 text-stone-400 hover:text-stone-700 cursor-pointer"
+                  aria-label="Mostrar ou ocultar senha"
+                >
+                  {showDeletePw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
-            )}
+            </div>
 
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-stone-700">

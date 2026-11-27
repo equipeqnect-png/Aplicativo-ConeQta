@@ -70,85 +70,108 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
 
     const cleanId = identifier.trim().toLowerCase();
-    const currentUsers = StorageService.getUsers();
-    let foundUser = currentUsers.find(
-      u => (u.cpf || '').toLowerCase() === cleanId ||
-           (u.email || '').toLowerCase() === cleanId ||
-           (u.name || '').toLowerCase() === cleanId
-    );
+    let foundUser: AppUser | undefined;
 
-    if (!foundUser) {
-      if (isSupabaseConfigured() && cleanId.includes('@')) {
-        try {
-          const supaRes = await authService.signIn(cleanId, password);
-          if (supaRes?.user && !supaRes.error) {
-            const profile = supaRes.user as Partial<AppUser>;
-            foundUser = {
-              id: profile.id || `usr_${Date.now()}`,
-              name: profile.name || cleanId.split('@')[0],
-              email: (profile.email || cleanId).toLowerCase(),
-              password,
-              phone: profile.phone || '',
-              role: profile.role || 'consumer',
-              city: profile.city || 'Queimados',
-              neighborhood: profile.neighborhood || 'Queimados',
-              avatar: profile.avatar || '',
-              avatarBgColor: profile.avatarBgColor || '#4E553D',
-              status: profile.status || 'ativo',
-              verified: true,
-              createdAt: profile.createdAt || new Date().toLocaleDateString('pt-BR'),
-            };
-            StorageService.saveUser(foundUser);
-          }
-        } catch {
-          // Fall through to error message
+    // 1. Authenticate against server database first (works across any device & browser)
+    try {
+      const apiResp = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: identifier.trim(), password }),
+      });
+
+      if (apiResp.ok) {
+        const apiData = await apiResp.json();
+        if (apiData?.user) {
+          const synced = StorageService.mergeSyncedUsers([apiData.user as AppUser]);
+          foundUser = synced.find((u) => u.id === apiData.user.id) || (apiData.user as AppUser);
         }
+      } else if (apiResp.status === 401 || apiResp.status === 403) {
+        const errData = await apiResp.json().catch(() => ({}));
+        setLoginError(errData?.error || 'Senha incorreta ou conta bloqueada.');
+        return;
       }
+    } catch {
+      // Backend API unreachable; continue to Supabase/local checks
+    }
+
+    // 2. Fallback to local storage or Supabase if not yet in server DB (e.g. initial admin seed)
+    if (!foundUser) {
+      const currentUsers = StorageService.getUsers();
+      foundUser = currentUsers.find(
+        u => (u.cpf || '').toLowerCase() === cleanId ||
+             (u.email || '').toLowerCase() === cleanId ||
+             (u.name || '').toLowerCase() === cleanId
+      );
 
       if (!foundUser) {
-        setLoginError('E-mail ou CPF não encontrado. Verifique os dados digitados ou crie sua conta.');
-        return;
-      }
-    } else {
-      if (foundUser.status === 'bloqueado') {
-        setLoginError('Esta conta está temporariamente bloqueada pelo administrador.');
-        return;
-      }
-
-      if (foundUser.password) {
-        if (foundUser.password !== password) {
-          setLoginError('Senha incorreta. Por favor, verifique a senha digitada.');
-          return;
-        }
-      } else if (!isSupabaseConfigured()) {
-        setLoginError('Não foi possível validar sua senha. Tente novamente.');
-        return;
-      }
-
-      // Sync with Supabase session & authoritative role if configured
-      if (isSupabaseConfigured() && foundUser.email) {
-        try {
-          const supaRes = await authService.signIn(foundUser.email, password);
-          if (!foundUser.password && (supaRes?.error || !supaRes?.user)) {
-            setLoginError('Senha incorreta. Por favor, verifique a senha digitada.');
-            return;
-          }
-          if (supaRes?.user && !supaRes.error) {
-            const supaProfile = supaRes.user as Partial<AppUser>;
-            if (supaProfile.role && supaProfile.role !== foundUser.role) {
+        if (isSupabaseConfigured() && cleanId.includes('@')) {
+          try {
+            const supaRes = await authService.signIn(cleanId, password);
+            if (supaRes?.user && !supaRes.error) {
+              const profile = supaRes.user as Partial<AppUser>;
               foundUser = {
-                ...foundUser,
-                role: supaProfile.role,
+                id: profile.id || `usr_${Date.now()}`,
+                name: profile.name || cleanId.split('@')[0],
+                email: (profile.email || cleanId).toLowerCase(),
+                phone: profile.phone || '',
+                role: profile.role || 'consumer',
+                city: profile.city || 'Queimados',
+                neighborhood: profile.neighborhood || 'Queimados',
+                avatar: profile.avatar || '',
+                avatarBgColor: profile.avatarBgColor || '#4E553D',
+                status: profile.status || 'ativo',
+                verified: true,
+                createdAt: profile.createdAt || new Date().toLocaleDateString('pt-BR'),
               };
               StorageService.saveUser(foundUser);
             }
-          }
-        } catch {
-          if (!foundUser.password) {
-            setLoginError('Erro ao verificar credenciais. Tente novamente.');
-            return;
+          } catch {
+            // Fall through to error message
           }
         }
+
+        if (!foundUser) {
+          setLoginError('E-mail ou CPF não encontrado. Verifique os dados digitados ou crie sua conta.');
+          return;
+        }
+      } else {
+        if (foundUser.status === 'bloqueado') {
+          setLoginError('Esta conta está temporariamente bloqueada pelo administrador.');
+          return;
+        }
+
+        if (foundUser.password) {
+          if (foundUser.password !== password) {
+            setLoginError('Senha incorreta. Por favor, verifique a senha digitada.');
+            return;
+          }
+        } else if (!isSupabaseConfigured()) {
+          setLoginError('Não foi possível validar sua senha. Tente novamente.');
+          return;
+        }
+      }
+    }
+
+    // 3. Sync Supabase session & authoritative role when configured
+    if (isSupabaseConfigured() && foundUser.email) {
+      try {
+        const supaRes = await authService.signIn(foundUser.email, password);
+        if (!foundUser.password && foundUser.id && !supaRes?.user && supaRes?.error) {
+          // Only fail if user wasn't already verified by /api/auth/login
+        }
+        if (supaRes?.user && !supaRes.error) {
+          const supaProfile = supaRes.user as Partial<AppUser>;
+          if (supaProfile.role && supaProfile.role !== foundUser.role) {
+            foundUser = {
+              ...foundUser,
+              role: supaProfile.role,
+            };
+            StorageService.saveUser(foundUser);
+          }
+        }
+      } catch {
+        // Keep verified session
       }
     }
 
@@ -219,19 +242,43 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         farmName: regRole === 'producer' ? `Loja de ${cleanName}` : undefined,
       };
 
-      // Attempt Supabase sign up first to obtain auth user ID and send confirmation email
+      // 1. Persist registration permanently in backend database with scrypt password hash
+      let registeredUser: AppUser = newUser;
+      try {
+        const regResp = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newUser),
+        });
+        if (regResp.status === 409) {
+          const errData = await regResp.json().catch(() => ({}));
+          setRegError(errData?.error || 'Este e-mail ou CPF já está cadastrado no ConeQta.');
+          setIsSubmitting(false);
+          return;
+        }
+        if (regResp.ok) {
+          const regData = await regResp.json();
+          if (regData?.user) {
+            registeredUser = { ...newUser, ...regData.user };
+          }
+        }
+      } catch {
+        // Fallback to local/Supabase persistence
+      }
+
+      // 2. Attempt Supabase sign up if configured
       let supabaseUserId: string | undefined;
       let supabaseEmailSent = false;
       try {
-        const supaResult = await authService.signUp(newUser.email, regPassword, {
-          name: newUser.name,
-          role: newUser.role,
-          phone: newUser.phone,
-          city: newUser.city,
-          neighborhood: newUser.neighborhood,
+        const supaResult = await authService.signUp(registeredUser.email, regPassword, {
+          name: registeredUser.name,
+          role: registeredUser.role,
+          phone: registeredUser.phone,
+          city: registeredUser.city,
+          neighborhood: registeredUser.neighborhood,
           producerId,
           farmId: producerId,
-          farmName: newUser.farmName,
+          farmName: registeredUser.farmName,
         });
         if (supaResult?.user?.id) {
           supabaseUserId = supaResult.user.id;
@@ -241,14 +288,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         // Fallback to local session if Supabase not yet configured
       }
 
-      // If registering as a seller, create and persist Seller/Producer profile globally
+      // 3. If registering as a seller, create and persist Seller/Producer profile globally
       if (regRole === 'producer' && producerId) {
-        const newProducer = buildProducerFromUser(newUser);
+        const newProducer = buildProducerFromUser(registeredUser);
         await producersService.upsert(newProducer, supabaseUserId);
       }
 
-      // Save user to local storage & backend API
-      StorageService.saveUser(newUser);
+      // 4. Save user in local storage
+      StorageService.saveUser(registeredUser);
 
       // Dispatch welcome & registration confirmation email via backend API
       let apiEmailSent = false;

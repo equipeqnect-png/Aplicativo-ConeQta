@@ -145,13 +145,6 @@ export default function App() {
         setProducts(syncedProducts);
       })
       .catch(() => {});
-
-    usersService
-      .getAll()
-      .then((syncedUsers) => {
-        setUsers(syncedUsers);
-      })
-      .catch(() => {});
   }, []);
 
   // Load app feedbacks and latest users list from backend/Supabase when signed in as admin
@@ -571,7 +564,12 @@ export default function App() {
       </main>
 
       {/* 4. Footer */}
-      <AppFooter onOpenDiagnostics={() => setIsDiagnosticModalOpen(true)} />
+      <AppFooter
+        isAdmin={currentRoleOption === 'admin'}
+        onOpenDiagnostics={
+          currentRoleOption === 'admin' ? () => setIsDiagnosticModalOpen(true) : undefined
+        }
+      />
 
       {/* MODALS */}
       <AddressModal
@@ -608,10 +606,13 @@ export default function App() {
         currentUser={currentUser}
       />
 
-      <SupabaseDiagnosticModal
-        isOpen={isDiagnosticModalOpen}
-        onClose={() => setIsDiagnosticModalOpen(false)}
-      />
+      {currentRoleOption === 'admin' && (
+        <SupabaseDiagnosticModal
+          isOpen={isDiagnosticModalOpen}
+          isAdmin={true}
+          onClose={() => setIsDiagnosticModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -150,11 +150,35 @@ export const authService = {
 
   async updateUserCredentials(
     user: AppUser,
-    updates: { email?: string; phone?: string; password?: string }
+    updates: { email?: string; phone?: string; password?: string; currentPassword?: string }
   ): Promise<{ success: boolean; user: AppUser; error?: string; emailConfirmationPending?: boolean }> {
     const nextEmail = updates.email !== undefined ? updates.email.trim().toLowerCase() : user.email;
     const nextPhone = updates.phone !== undefined ? updates.phone.trim() : user.phone;
     const nextPassword = updates.password ? updates.password : user.password;
+
+    const { password: _oldPw, ...safeSnapshot } = user;
+    try {
+      const apiResp = await fetch('/api/auth/update-credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          currentPassword: updates.currentPassword || user.password,
+          email: updates.email !== undefined ? nextEmail : undefined,
+          phone: updates.phone !== undefined ? nextPhone : undefined,
+          password: updates.password,
+          userSnapshot: safeSnapshot,
+        }),
+      });
+      if (!apiResp.ok) {
+        const errData = await apiResp.json().catch(() => ({}));
+        if (errData?.error) {
+          return { success: false, user, error: errData.error };
+        }
+      }
+    } catch {
+      // Fallback gracefully when backend API is unreachable
+    }
 
     const updatedUser: AppUser = {
       ...user,
@@ -229,7 +253,7 @@ export const authService = {
   },
 
   async deleteUserAccount(user: AppUser): Promise<{ success: boolean }> {
-    StorageService.deleteUser(user.id);
+    StorageService.deleteUser(user.id, user);
 
     if (supabase) {
       try {
@@ -1270,7 +1294,18 @@ export interface SupabaseDiagnosticResult {
   message: string;
 }
 
-export const checkSupabaseConnection = async (): Promise<SupabaseDiagnosticResult> => {
+export const checkSupabaseConnection = async (isAdmin = false): Promise<SupabaseDiagnosticResult> => {
+  if (!isAdmin) {
+    return {
+      isConfigured: false,
+      supabaseUrl: 'Restrito',
+      hasAnonKey: false,
+      connected: false,
+      tables: [],
+      message: 'Acesso ao banco de dados Supabase restrito exclusivamente ao administrador.'
+    };
+  }
+
   const configured = isSupabaseConfigured();
   const maskedUrl = supabaseUrl ? supabaseUrl.replace(/^(https:\/\/[^.]+).*/, '$1.supabase.co') : 'Não configurado';
 

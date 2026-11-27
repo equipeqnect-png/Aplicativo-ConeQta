@@ -512,10 +512,11 @@ export class StorageService {
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
     window.dispatchEvent(new Event('coneqta_storage_updated'));
 
+    const { password: _pw, ...safeUserPayload } = user;
     fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(user),
+      body: JSON.stringify(safeUserPayload),
     }).catch(err => console.warn('API users sync warning:', err));
   }
 
