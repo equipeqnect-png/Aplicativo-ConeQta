@@ -13,7 +13,7 @@ import {
   AppFeedback,
 } from './types';
 import { StorageService, UserAddressConfig, reconcileProducersWithUsers } from './services/storage';
-import { authService, appFeedbacksService, producersService, productsService } from './services/supabaseClient';
+import { authService, appFeedbacksService, producersService, productsService, usersService } from './services/supabaseClient';
 
 // Screens & Layout
 import { LandingPage } from './components/LandingPage';
@@ -145,14 +145,26 @@ export default function App() {
         setProducts(syncedProducts);
       })
       .catch(() => {});
+
+    usersService
+      .getAll()
+      .then((syncedUsers) => {
+        setUsers(syncedUsers);
+      })
+      .catch(() => {});
   }, []);
 
-  // Load app feedbacks from Supabase when signed in as admin
+  // Load app feedbacks and latest users list from backend/Supabase when signed in as admin
   useEffect(() => {
     if (currentUser?.role === 'admin') {
       appFeedbacksService
         .getAllForAdmin()
         .then((list) => setAppFeedbacks(list))
+        .catch(() => {});
+
+      usersService
+        .getAll()
+        .then((syncedUsers) => setUsers(syncedUsers))
         .catch(() => {});
     }
   }, [currentUser?.role]);
@@ -235,9 +247,24 @@ export default function App() {
   };
 
   // User moderation save (Admin)
-  const handleSaveUser = (u: AppUser) => {
-    StorageService.saveUser(u);
+  const handleSaveUser = async (u: AppUser) => {
+    await usersService.updateByAdmin(u);
     setUsers(StorageService.getUsers());
+  };
+
+  // User deletion (Admin)
+  const handleDeleteUser = async (targetUser: AppUser) => {
+    await usersService.deleteByAdmin(targetUser);
+    setUsers(StorageService.getUsers());
+    setProducers(StorageService.getProducers());
+    setProducts(StorageService.getProducts());
+    setReviews(StorageService.getReviews());
+  };
+
+  // Refresh all registered users (Admin)
+  const handleRefreshUsers = async () => {
+    const synced = await usersService.getAll();
+    setUsers(synced);
   };
 
   // Current user account update (email, phone, password)
@@ -531,6 +558,8 @@ export default function App() {
             appFeedbacks={appFeedbacks}
             categories={categories}
             onSaveUser={handleSaveUser}
+            onDeleteUser={handleDeleteUser}
+            onRefreshUsers={handleRefreshUsers}
             onDeleteProduct={handleDeleteProduct}
             onUpdateReportStatus={handleUpdateReportStatus}
             onUpdateAppFeedbackStatus={handleUpdateAppFeedbackStatus}

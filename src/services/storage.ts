@@ -413,7 +413,7 @@ export class StorageService {
   }
 
   // Users
-  private static getDeletedUserIds(): Set<string> {
+  static getDeletedUserIds(): Set<string> {
     try {
       const raw = localStorage.getItem(DELETED_USERS_KEY);
       return new Set(raw ? JSON.parse(raw) : []);
@@ -449,6 +449,51 @@ export class StorageService {
     }
   }
 
+  static mergeSyncedUsers(remoteUsers: AppUser[]): AppUser[] {
+    const fakeIds = new Set(['usr_vivian', 'usr_leo', 'usr_julia']);
+    const deletedIds = this.getDeletedUserIds();
+    const localUsers = this.getUsers();
+    const byKey = new Map<string, AppUser>();
+
+    for (const u of localUsers) {
+      if (!u?.id || fakeIds.has(u.id) || deletedIds.has(u.id)) continue;
+      byKey.set(u.id, u);
+    }
+
+    for (const r of remoteUsers) {
+      if (!r?.id || fakeIds.has(r.id) || deletedIds.has(r.id)) continue;
+      const existingById = byKey.get(r.id);
+      const existingByEmail = !existingById && r.email
+        ? Array.from(byKey.values()).find(
+            (u) => (u.email || '').toLowerCase() === r.email.toLowerCase()
+          )
+        : undefined;
+      const existing = existingById || existingByEmail;
+
+      if (existing) {
+        byKey.set(existing.id, {
+          ...r,
+          ...existing,
+          name: r.name || existing.name,
+          email: r.email || existing.email,
+          phone: r.phone || existing.phone,
+          neighborhood: r.neighborhood || existing.neighborhood,
+          role: r.role || existing.role,
+          status: r.status || existing.status,
+          avatar: existing.avatar || r.avatar,
+          avatarBgColor: existing.avatarBgColor || r.avatarBgColor,
+          password: existing.password || r.password,
+        });
+      } else {
+        byKey.set(r.id, r);
+      }
+    }
+
+    const merged = Array.from(byKey.values());
+    localStorage.setItem(USERS_KEY, JSON.stringify(merged));
+    return merged;
+  }
+
   static saveUser(user: AppUser): void {
     // If re-registering/saving, ensure ID is not marked deleted
     const deletedIds = this.getDeletedUserIds();
@@ -474,35 +519,50 @@ export class StorageService {
     }).catch(err => console.warn('API users sync warning:', err));
   }
 
-  static deleteUser(userId: string): void {
+  static deleteUser(userId: string, fallbackUser?: AppUser): void {
     const users = this.getUsers();
-    const targetUser = users.find(u => u.id === userId);
-    const remainingUsers = users.filter(u => u.id !== userId);
+    const localTarget = users.find(u => u.id === userId);
+    const targetUser = localTarget || fallbackUser;
+    const targetEmail = (targetUser?.email || '').trim().toLowerCase();
+
+    const remainingUsers = users.filter(u => {
+      if (u.id === userId) return false;
+      if (targetEmail && (u.email || '').trim().toLowerCase() === targetEmail) return false;
+      return true;
+    });
 
     // Record deletion before clearing producer so reconcileProducersWithUsers does not re-create it
     const deletedIds = this.getDeletedUserIds();
     deletedIds.add(userId);
+    if (localTarget && localTarget.id !== userId) deletedIds.add(localTarget.id);
     localStorage.setItem(DELETED_USERS_KEY, JSON.stringify(Array.from(deletedIds)));
     localStorage.setItem(USERS_KEY, JSON.stringify(remainingUsers));
 
+    const producerIdsToRemove = new Set<string>();
     if (targetUser && targetUser.role === 'producer') {
-      const producerIdsToRemove = new Set<string>([
-        targetUser.producerId || targetUser.farmId || `prod_${targetUser.id}`,
-        targetUser.id,
-      ]);
-      producerIdsToRemove.forEach((pid) => {
-        this.deleteProducer(pid);
-      });
+      producerIdsToRemove.add(targetUser.producerId || targetUser.farmId || `prod_${targetUser.id}`);
+      producerIdsToRemove.add(`prod_${userId}`);
+      producerIdsToRemove.add(userId);
     }
+    producerIdsToRemove.forEach((pid) => {
+      this.deleteProducer(pid);
+    });
 
     const active = this.getCurrentUser();
-    if (active && active.id === userId) {
+    if (active && (active.id === userId || (targetEmail && (active.email || '').toLowerCase() === targetEmail))) {
       this.logout();
     }
 
     window.dispatchEvent(new Event('coneqta_storage_updated'));
 
-    fetch(`/api/users/${userId}`, {
+    const params = new URLSearchParams();
+    if (targetEmail) params.set('email', targetEmail);
+    if (targetUser?.producerId || targetUser?.farmId) {
+      params.set('producerId', targetUser.producerId || targetUser.farmId || '');
+    }
+    const queryStr = params.toString() ? `?${params.toString()}` : '';
+
+    fetch(`/api/users/${encodeURIComponent(userId)}${queryStr}`, {
       method: 'DELETE',
     }).catch(err => console.warn('API delete user warning:', err));
   }

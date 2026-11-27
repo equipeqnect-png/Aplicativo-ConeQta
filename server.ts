@@ -217,19 +217,32 @@ app.post("/api/users", (req, res) => {
 app.delete("/api/users/:id", (req, res) => {
   const db = readDb();
   const userId = req.params.id;
-  const targetUser = (db.users || []).find((u: any) => u.id === userId);
-  db.users = (db.users || []).filter((u: any) => u.id !== userId);
+  const emailQuery = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : "";
+  const producerIdQuery = typeof req.query.producerId === "string" ? req.query.producerId.trim() : "";
 
-  if (targetUser && targetUser.role === "producer") {
-    const prodIds = new Set<string>([
-      targetUser.producerId || targetUser.farmId || `prod_${targetUser.id}`,
-      targetUser.id,
-    ]);
-    db.producers = (db.producers || []).filter((p: any) => !prodIds.has(p.id));
-    db.products = (db.products || []).filter((p: any) => !prodIds.has(p.producerId));
-    db.stories = (db.stories || []).filter((s: any) => !prodIds.has(s.producerId));
-    db.reviews = (db.reviews || []).filter((r: any) => !prodIds.has(r.producerId));
+  const targetUser = (db.users || []).find(
+    (u: any) => u.id === userId || (emailQuery && u.email && String(u.email).toLowerCase() === emailQuery)
+  );
+
+  db.users = (db.users || []).filter((u: any) => {
+    if (u.id === userId) return false;
+    if (emailQuery && u.email && String(u.email).toLowerCase() === emailQuery) return false;
+    return true;
+  });
+
+  const prodIds = new Set<string>([`prod_${userId}`, userId]);
+  if (producerIdQuery) prodIds.add(producerIdQuery);
+  if (targetUser) {
+    if (targetUser.producerId) prodIds.add(targetUser.producerId);
+    if (targetUser.farmId) prodIds.add(targetUser.farmId);
+    prodIds.add(`prod_${targetUser.id}`);
+    prodIds.add(targetUser.id);
   }
+
+  db.producers = (db.producers || []).filter((p: any) => !prodIds.has(p.id));
+  db.products = (db.products || []).filter((p: any) => !prodIds.has(p.producerId));
+  db.stories = (db.stories || []).filter((s: any) => !prodIds.has(s.producerId));
+  db.reviews = (db.reviews || []).filter((r: any) => !prodIds.has(r.producerId));
 
   writeDb(db);
   res.json({ success: true });

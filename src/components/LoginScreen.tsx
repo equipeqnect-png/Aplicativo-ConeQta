@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { ActiveRoleOption, AppUser } from '../types';
 import { StorageService, buildProducerFromUser } from '../services/storage';
-import { authService, producersService } from '../services/supabaseClient';
+import { authService, isSupabaseConfigured, producersService } from '../services/supabaseClient';
 
 interface LoginScreenProps {
   onLogin: (roleOption: ActiveRoleOption, user: AppUser, welcomeNotice?: string) => void;
@@ -71,30 +71,85 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     const cleanId = identifier.trim().toLowerCase();
     const currentUsers = StorageService.getUsers();
-    const foundUser = currentUsers.find(
+    let foundUser = currentUsers.find(
       u => (u.cpf || '').toLowerCase() === cleanId ||
            (u.email || '').toLowerCase() === cleanId ||
            (u.name || '').toLowerCase() === cleanId
     );
 
     if (!foundUser) {
-      setLoginError('E-mail ou CPF não encontrado. Verifique os dados digitados ou crie sua conta.');
-      return;
-    }
-
-    // Verify password if user has password set
-    if (foundUser.password && foundUser.password !== password) {
-      setLoginError('Senha incorreta. Por favor, verifique a senha digitada.');
-      return;
-    }
-
-    // If Supabase is connected, trigger signIn
-    try {
-      if (foundUser.email) {
-        await authService.signIn(foundUser.email, password);
+      if (isSupabaseConfigured() && cleanId.includes('@')) {
+        try {
+          const supaRes = await authService.signIn(cleanId, password);
+          if (supaRes?.user && !supaRes.error) {
+            const profile = supaRes.user as Partial<AppUser>;
+            foundUser = {
+              id: profile.id || `usr_${Date.now()}`,
+              name: profile.name || cleanId.split('@')[0],
+              email: (profile.email || cleanId).toLowerCase(),
+              password,
+              phone: profile.phone || '',
+              role: profile.role || 'consumer',
+              city: profile.city || 'Queimados',
+              neighborhood: profile.neighborhood || 'Queimados',
+              avatar: profile.avatar || '',
+              avatarBgColor: profile.avatarBgColor || '#4E553D',
+              status: profile.status || 'ativo',
+              verified: true,
+              createdAt: profile.createdAt || new Date().toLocaleDateString('pt-BR'),
+            };
+            StorageService.saveUser(foundUser);
+          }
+        } catch {
+          // Fall through to error message
+        }
       }
-    } catch {
-      // Continue with local session if network or Supabase is in dev mode
+
+      if (!foundUser) {
+        setLoginError('E-mail ou CPF não encontrado. Verifique os dados digitados ou crie sua conta.');
+        return;
+      }
+    } else {
+      if (foundUser.status === 'bloqueado') {
+        setLoginError('Esta conta está temporariamente bloqueada pelo administrador.');
+        return;
+      }
+
+      if (foundUser.password) {
+        if (foundUser.password !== password) {
+          setLoginError('Senha incorreta. Por favor, verifique a senha digitada.');
+          return;
+        }
+      } else if (!isSupabaseConfigured()) {
+        setLoginError('Não foi possível validar sua senha. Tente novamente.');
+        return;
+      }
+
+      // Sync with Supabase session & authoritative role if configured
+      if (isSupabaseConfigured() && foundUser.email) {
+        try {
+          const supaRes = await authService.signIn(foundUser.email, password);
+          if (!foundUser.password && (supaRes?.error || !supaRes?.user)) {
+            setLoginError('Senha incorreta. Por favor, verifique a senha digitada.');
+            return;
+          }
+          if (supaRes?.user && !supaRes.error) {
+            const supaProfile = supaRes.user as Partial<AppUser>;
+            if (supaProfile.role && supaProfile.role !== foundUser.role) {
+              foundUser = {
+                ...foundUser,
+                role: supaProfile.role,
+              };
+              StorageService.saveUser(foundUser);
+            }
+          }
+        } catch {
+          if (!foundUser.password) {
+            setLoginError('Erro ao verificar credenciais. Tente novamente.');
+            return;
+          }
+        }
+      }
     }
 
     // Route according to user role

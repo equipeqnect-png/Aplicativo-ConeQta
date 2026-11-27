@@ -250,6 +250,117 @@ export const authService = {
 };
 
 // ==============================================================================
+// 1B. SERVIÇO DE USUÁRIOS CADASTRADOS (ADMINISTRAÇÃO GLOBAL)
+// ==============================================================================
+export const usersService = {
+  async getAll(): Promise<AppUser[]> {
+    const remoteUsers: AppUser[] = [];
+
+    // 1. Fetch shared users from Express backend (/api/users -> db.json)
+    try {
+      const resp = await fetch('/api/users').catch(() => null);
+      if (resp && resp.ok) {
+        const apiUsers = await resp.json();
+        if (Array.isArray(apiUsers)) {
+          for (const u of apiUsers) {
+            if (u?.id) {
+              remoteUsers.push(u as AppUser);
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore if backend unavailable
+    }
+
+    // 2. Fetch registered profiles from Supabase if configured
+    if (supabase) {
+      try {
+        const { data: profiles, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!error && Array.isArray(profiles)) {
+          for (const prof of profiles) {
+            if (!prof?.id) continue;
+            remoteUsers.push({
+              id: prof.id,
+              name: prof.name || prof.email?.split('@')[0] || 'Usuário',
+              email: prof.email || '',
+              cpf: prof.cpf || undefined,
+              phone: prof.phone || '',
+              role: prof.role || 'consumer',
+              city: prof.city || 'Queimados',
+              neighborhood: prof.neighborhood || 'Queimados',
+              avatar: prof.avatar || '',
+              avatarBgColor: prof.avatar_bg_color || '#4E553D',
+              status: prof.status || 'ativo',
+              verified: Boolean(prof.verified ?? true),
+              createdAt: prof.created_at
+                ? new Date(prof.created_at).toLocaleDateString('pt-BR')
+                : '',
+              producerId: prof.role === 'producer' ? `prod_${prof.id}` : undefined,
+              farmId: prof.role === 'producer' ? `prod_${prof.id}` : undefined,
+            });
+          }
+        }
+      } catch {
+        // ignore Supabase read fallback
+      }
+    }
+
+    return StorageService.mergeSyncedUsers(remoteUsers);
+  },
+
+  async updateByAdmin(user: AppUser): Promise<boolean> {
+    StorageService.saveUser(user);
+
+    if (!supabase) {
+      return true;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          role: user.role,
+          status: user.status || 'ativo',
+          name: user.name,
+          phone: user.phone || null,
+          neighborhood: user.neighborhood || null,
+        })
+        .eq('id', user.id);
+      return !error;
+    } catch {
+      return true;
+    }
+  },
+
+  async deleteByAdmin(user: AppUser): Promise<boolean> {
+    StorageService.deleteUser(user.id, user);
+
+    if (!supabase) {
+      return true;
+    }
+
+    try {
+      if (user.role === 'producer') {
+        const targetProducerId = user.producerId || user.farmId || `prod_${user.id}`;
+        await supabase.from('products').delete().eq('producer_id', targetProducerId);
+        await supabase.from('producers').delete().eq('id', targetProducerId);
+        await supabase.from('producers').delete().eq('user_id', user.id);
+      }
+      await supabase.from('profiles').delete().eq('id', user.id);
+    } catch (err) {
+      console.warn('Supabase admin user delete warning:', err);
+    }
+
+    return true;
+  },
+};
+
+// ==============================================================================
 // 2. SERVIÇO DE PRODUTORES (EMPREENDEDORES)
 // ==============================================================================
 export const producersService = {

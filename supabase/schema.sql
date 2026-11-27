@@ -361,7 +361,16 @@ CREATE POLICY "Perfis visíveis para todos os autenticados"
     ON public.profiles FOR SELECT USING (true);
 
 CREATE POLICY "Usuário pode atualizar seu próprio perfil" 
-    ON public.profiles FOR UPDATE USING (auth.uid() = id);
+    ON public.profiles FOR UPDATE USING (
+        auth.uid() = id
+        OR auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
+    );
+
+CREATE POLICY "Usuário ou admin pode deletar perfil"
+    ON public.profiles FOR DELETE USING (
+        auth.uid() = id
+        OR auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
+    );
 
 -- 6.2. PRODUTORES
 CREATE POLICY "Produtores são públicos para leitura" 
@@ -373,6 +382,12 @@ CREATE POLICY "Produtores podem atualizar seus dados"
         OR user_id IS NULL
         OR auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
         OR auth.role() IN ('authenticated', 'anon')
+    );
+
+CREATE POLICY "Produtores e admins podem deletar loja"
+    ON public.producers FOR DELETE USING (
+        auth.uid() = user_id
+        OR auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
     );
 
 CREATE POLICY "Inserção de produtor permitida" 
