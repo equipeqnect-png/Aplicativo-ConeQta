@@ -40,6 +40,7 @@ import {
 import { Producer, Product, Order, ChatMessage, AppUser, ProducerStory, Category, Certification } from '../types';
 import { ProductFormModal } from './ProductFormModal';
 import { StorageService } from '../services/storage';
+import { authService } from '../services/supabaseClient';
 import { StoryPostModal } from './StoryPostModal';
 import { StoryViewerModal } from './StoryViewerModal';
 import { EntrepreneurProfileModal } from './EntrepreneurProfileModal';
@@ -246,7 +247,7 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
         avatarBgColor,
         coverBgColor,
       };
-      StorageService.saveUser(updatedUser);
+      authService.updateUserProfile(updatedUser).catch(() => {});
       StorageService.setCurrentUser(updatedUser);
       onUserUpdated?.(updatedUser);
     }

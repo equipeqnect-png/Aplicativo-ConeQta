@@ -80,7 +80,7 @@ export const AccountSettingsTab: React.FC<AccountSettingsTabProps> = ({
       avatar: nextAvatar,
       avatarBgColor: nextBgColor,
     };
-    StorageService.saveUser(updatedUser);
+    authService.updateUserProfile(updatedUser).catch(() => {});
     StorageService.setCurrentUser(updatedUser);
 
     if (currentUser.role === 'producer') {

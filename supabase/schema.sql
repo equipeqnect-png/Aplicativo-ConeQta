@@ -59,14 +59,22 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     role user_role NOT NULL DEFAULT 'consumer',
     city TEXT DEFAULT 'Queimados',
     neighborhood TEXT,
-    avatar TEXT,
+    avatar TEXT DEFAULT '',
     avatar_bg_color TEXT DEFAULT '#4E553D',
-    verified BOOLEAN DEFAULT false,
+    cover_bg_color TEXT DEFAULT '#1F6B38',
+    farm_name TEXT,
+    verified BOOLEAN DEFAULT true,
     status user_status DEFAULT 'ativo',
     producer_id TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Garante migração segura em bancos já existentes
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS cover_bg_color TEXT DEFAULT '#1F6B38';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS farm_name TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_bg_color TEXT DEFAULT '#4E553D';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS producer_id TEXT;
 
 -- 3.2. PRODUTORES / EMPREENDEDORES LOCAIS
 CREATE TABLE IF NOT EXISTS public.producers (
@@ -285,24 +293,54 @@ CREATE OR REPLACE TRIGGER trg_orders_updated_at
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO public.profiles (id, email, name, role, phone, city, neighborhood, avatar)
+    INSERT INTO public.profiles (
+        id,
+        email,
+        name,
+        cpf,
+        role,
+        phone,
+        city,
+        neighborhood,
+        avatar,
+        avatar_bg_color,
+        cover_bg_color,
+        farm_name,
+        producer_id,
+        verified
+    )
     VALUES (
         NEW.id,
         NEW.email,
         COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
-        COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'consumer'::user_role),
+        NEW.raw_user_meta_data->>'cpf',
+        CASE
+            WHEN NEW.raw_user_meta_data->>'role' = 'producer' THEN 'producer'::user_role
+            ELSE 'consumer'::user_role
+        END,
         NEW.raw_user_meta_data->>'phone',
         COALESCE(NEW.raw_user_meta_data->>'city', 'Queimados'),
         COALESCE(NEW.raw_user_meta_data->>'neighborhood', 'Queimados'),
-        COALESCE(NEW.raw_user_meta_data->>'avatar', 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=400&q=80')
+        COALESCE(NEW.raw_user_meta_data->>'avatar', ''),
+        COALESCE(NEW.raw_user_meta_data->>'avatar_bg_color', '#4E553D'),
+        COALESCE(NEW.raw_user_meta_data->>'cover_bg_color', '#1F6B38'),
+        NEW.raw_user_meta_data->>'farm_name',
+        NEW.raw_user_meta_data->>'producer_id',
+        true
     )
     ON CONFLICT (id) DO UPDATE
     SET 
-        name = EXCLUDED.name,
+        email = EXCLUDED.email,
+        name = COALESCE(EXCLUDED.name, public.profiles.name),
+        cpf = COALESCE(EXCLUDED.cpf, public.profiles.cpf),
         phone = COALESCE(EXCLUDED.phone, public.profiles.phone),
         city = COALESCE(EXCLUDED.city, public.profiles.city),
         neighborhood = COALESCE(EXCLUDED.neighborhood, public.profiles.neighborhood),
-        avatar = EXCLUDED.avatar;
+        avatar = COALESCE(EXCLUDED.avatar, public.profiles.avatar),
+        avatar_bg_color = COALESCE(EXCLUDED.avatar_bg_color, public.profiles.avatar_bg_color),
+        cover_bg_color = COALESCE(EXCLUDED.cover_bg_color, public.profiles.cover_bg_color),
+        farm_name = COALESCE(EXCLUDED.farm_name, public.profiles.farm_name),
+        producer_id = COALESCE(EXCLUDED.producer_id, public.profiles.producer_id);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -366,18 +404,37 @@ RETURNS BOOLEAN AS $$
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
 
 -- 6.1. PROFILES (Acesso de listagem restrito ao próprio usuário e ao administrador)
+DROP POLICY IF EXISTS "Usuário vê próprio perfil ou admin vê todos" ON public.profiles;
 CREATE POLICY "Usuário vê próprio perfil ou admin vê todos" 
     ON public.profiles FOR SELECT USING (
         auth.uid() = id
         OR public.is_admin()
     );
 
+DROP POLICY IF EXISTS "Usuário pode criar próprio perfil" ON public.profiles;
+CREATE POLICY "Usuário pode criar próprio perfil"
+    ON public.profiles FOR INSERT WITH CHECK (
+        auth.uid() = id
+        AND role IN ('consumer', 'producer')
+        AND status = 'ativo'
+    );
+
+DROP POLICY IF EXISTS "Usuário pode atualizar seu próprio perfil" ON public.profiles;
 CREATE POLICY "Usuário pode atualizar seu próprio perfil" 
     ON public.profiles FOR UPDATE USING (
         auth.uid() = id
         OR public.is_admin()
+    )
+    WITH CHECK (
+        public.is_admin()
+        OR (
+            auth.uid() = id
+            AND role = (SELECT p.role FROM public.profiles p WHERE p.id = auth.uid())
+            AND status = (SELECT p.status FROM public.profiles p WHERE p.id = auth.uid())
+        )
     );
 
+DROP POLICY IF EXISTS "Usuário ou admin pode deletar perfil" ON public.profiles;
 CREATE POLICY "Usuário ou admin pode deletar perfil"
     ON public.profiles FOR DELETE USING (
         auth.uid() = id

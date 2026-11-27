@@ -20,6 +20,38 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured()
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
+function mapSupabaseProfileToAppUser(prof: any, fallback: Partial<AppUser> = {}): AppUser {
+  const role = (prof?.role || fallback.role || 'consumer') as AppUser['role'];
+  const id = prof?.id || fallback.id || '';
+  const producerId =
+    prof?.producer_id ||
+    fallback.producerId ||
+    fallback.farmId ||
+    (role === 'producer' && id ? `prod_${id}` : undefined);
+
+  return {
+    id,
+    name: prof?.name || fallback.name || prof?.email?.split('@')[0] || 'Usuário',
+    email: (prof?.email || fallback.email || '').toLowerCase(),
+    cpf: prof?.cpf ?? fallback.cpf ?? undefined,
+    phone: prof?.phone ?? fallback.phone ?? '',
+    role,
+    city: prof?.city || fallback.city || 'Queimados',
+    neighborhood: prof?.neighborhood || fallback.neighborhood || 'Queimados',
+    avatar: prof?.avatar !== undefined && prof?.avatar !== null ? prof.avatar : (fallback.avatar || ''),
+    avatarBgColor: prof?.avatar_bg_color || fallback.avatarBgColor || '#4E553D',
+    coverBgColor: prof?.cover_bg_color || fallback.coverBgColor || '#1F6B38',
+    farmName: prof?.farm_name || fallback.farmName || (role === 'producer' ? `Loja de ${prof?.name || fallback.name || 'Vendedor'}` : undefined),
+    producerId,
+    farmId: producerId,
+    status: prof?.status || fallback.status || 'ativo',
+    verified: Boolean(prof?.verified ?? fallback.verified ?? true),
+    createdAt: prof?.created_at
+      ? new Date(prof.created_at).toLocaleDateString('pt-BR')
+      : fallback.createdAt || '',
+  };
+}
+
 // ==============================================================================
 // 1. SERVIÇO DE AUTENTICAÇÃO E PERFIS
 // ==============================================================================
@@ -30,6 +62,7 @@ export const authService = {
         id: userData.id || `usr_${Date.now()}`,
         email,
         name: userData.name || email.split('@')[0],
+        cpf: userData.cpf,
         role: userData.role || 'consumer',
         city: userData.city || 'Queimados',
         neighborhood: userData.neighborhood || 'Centro',
@@ -41,6 +74,7 @@ export const authService = {
         farmName: userData.farmName,
         avatar: userData.avatar || '',
         avatarBgColor: userData.avatarBgColor || '#4E553D',
+        coverBgColor: userData.coverBgColor || '#1F6B38',
       };
       StorageService.saveUser(newUser);
       StorageService.setCurrentUser(newUser);
@@ -48,17 +82,23 @@ export const authService = {
     }
 
     try {
+      const role = userData.role || 'consumer';
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: {
             name: userData.name,
-            role: userData.role || 'consumer',
-            phone: userData.phone,
+            cpf: userData.cpf || null,
+            role,
+            phone: userData.phone || '',
             city: userData.city || 'Queimados',
-            neighborhood: userData.neighborhood,
-            avatar: userData.avatar,
+            neighborhood: userData.neighborhood || 'Queimados',
+            avatar: userData.avatar || '',
+            avatar_bg_color: userData.avatarBgColor || '#4E553D',
+            cover_bg_color: userData.coverBgColor || '#1F6B38',
+            farm_name: userData.farmName || null,
+            producer_id: userData.producerId || null,
           }
         }
       });
@@ -66,13 +106,48 @@ export const authService = {
       if (error) return { user: null, error: error.message, emailSent: false };
 
       if (data.user) {
+        const canonicalProducerId =
+          role === 'producer' ? `prod_${data.user.id}` : userData.producerId;
+
+        // If session is immediately active, persist full profile fields cleanly
+        if (data.session) {
+          await supabase.from('profiles').upsert({
+            id: data.user.id,
+            email: email.trim().toLowerCase(),
+            name: userData.name || email.split('@')[0],
+            cpf: userData.cpf || null,
+            phone: userData.phone || '',
+            role,
+            city: userData.city || 'Queimados',
+            neighborhood: userData.neighborhood || 'Queimados',
+            avatar: userData.avatar || '',
+            avatar_bg_color: userData.avatarBgColor || '#4E553D',
+            cover_bg_color: userData.coverBgColor || '#1F6B38',
+            farm_name: userData.farmName || null,
+            producer_id: canonicalProducerId || null,
+            verified: true,
+            status: 'ativo',
+          });
+        }
+
         const { data: profile } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', data.user.id)
           .single();
 
-        return { user: profile || data.user, error: null, emailSent: false };
+        const mappedUser = mapSupabaseProfileToAppUser(
+          profile || { id: data.user.id, email: data.user.email },
+          {
+            ...userData,
+            id: data.user.id,
+            email,
+            producerId: canonicalProducerId,
+            farmId: canonicalProducerId,
+          }
+        );
+
+        return { user: mappedUser, error: null, emailSent: false };
       }
       return { user: null, error: 'Erro inesperado no cadastro', emailSent: false };
     } catch (err: any) {
@@ -106,12 +181,21 @@ export const authService = {
           .eq('id', data.user.id)
           .single();
 
-        if (profile) {
-          StorageService.setCurrentUser(profile as AppUser);
-          return { user: profile, error: null };
+        const mapped = mapSupabaseProfileToAppUser(
+          profile || { id: data.user.id, email: data.user.email, ...data.user.user_metadata }
+        );
+
+        if (mapped.status === 'bloqueado') {
+          await supabase.auth.signOut();
+          return { user: null, error: 'Esta conta está temporariamente bloqueada pelo administrador.' };
         }
+
+        const synced = StorageService.mergeSyncedUsers([mapped]);
+        const mergedUser = synced.find((u) => u.id === mapped.id) || mapped;
+        StorageService.setCurrentUser(mergedUser);
+        return { user: mergedUser, error: null };
       }
-      return { user: data.user, error: null };
+      return { user: null, error: 'Credenciais inválidas.' };
     } catch (err: any) {
       return { user: null, error: err.message || 'Erro de conexão' };
     }
@@ -140,9 +224,69 @@ export const authService = {
         .eq('id', session.user.id)
         .single();
 
-      return (profile as AppUser) || null;
+      if (!profile) {
+        return StorageService.getCurrentUser();
+      }
+
+      const mapped = mapSupabaseProfileToAppUser(profile);
+      if (mapped.status === 'bloqueado') {
+        await supabase.auth.signOut();
+        StorageService.logout();
+        return null;
+      }
+
+      const synced = StorageService.mergeSyncedUsers([mapped]);
+      const mergedUser = synced.find((u) => u.id === mapped.id) || mapped;
+      StorageService.setCurrentUser(mergedUser);
+      return mergedUser;
     } catch {
       return StorageService.getCurrentUser();
+    }
+  },
+
+  async updateUserProfile(user: AppUser): Promise<boolean> {
+    StorageService.saveUser(user);
+
+    if (!supabase) {
+      return true;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const targetId = session?.user?.id || user.id;
+
+      await supabase
+        .from('profiles')
+        .update({
+          name: user.name,
+          cpf: user.cpf || null,
+          phone: user.phone || '',
+          city: user.city || 'Queimados',
+          neighborhood: user.neighborhood || 'Queimados',
+          avatar: user.avatar || '',
+          avatar_bg_color: user.avatarBgColor || '#4E553D',
+          cover_bg_color: user.coverBgColor || '#1F6B38',
+          farm_name: user.farmName || null,
+          producer_id: user.producerId || user.farmId || null,
+        })
+        .eq('id', targetId);
+
+      if (session?.user) {
+        await supabase.auth.updateUser({
+          data: {
+            name: user.name,
+            phone: user.phone || '',
+            city: user.city || 'Queimados',
+            neighborhood: user.neighborhood || 'Queimados',
+            avatar_bg_color: user.avatarBgColor || '#4E553D',
+            cover_bg_color: user.coverBgColor || '#1F6B38',
+            farm_name: user.farmName || null,
+          }
+        }).catch(() => {});
+      }
+      return true;
+    } catch {
+      return true;
     }
   },
 
@@ -306,25 +450,7 @@ export const usersService = {
         if (!error && Array.isArray(profiles)) {
           for (const prof of profiles) {
             if (!prof?.id) continue;
-            remoteUsers.push({
-              id: prof.id,
-              name: prof.name || prof.email?.split('@')[0] || 'Usuário',
-              email: prof.email || '',
-              cpf: prof.cpf || undefined,
-              phone: prof.phone || '',
-              role: prof.role || 'consumer',
-              city: prof.city || 'Queimados',
-              neighborhood: prof.neighborhood || 'Queimados',
-              avatar: prof.avatar || '',
-              avatarBgColor: prof.avatar_bg_color || '#4E553D',
-              status: prof.status || 'ativo',
-              verified: Boolean(prof.verified ?? true),
-              createdAt: prof.created_at
-                ? new Date(prof.created_at).toLocaleDateString('pt-BR')
-                : '',
-              producerId: prof.role === 'producer' ? `prod_${prof.id}` : undefined,
-              farmId: prof.role === 'producer' ? `prod_${prof.id}` : undefined,
-            });
+            remoteUsers.push(mapSupabaseProfileToAppUser(prof));
           }
         }
       } catch {

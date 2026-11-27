@@ -109,22 +109,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           try {
             const supaRes = await authService.signIn(cleanId, password);
             if (supaRes?.user && !supaRes.error) {
-              const profile = supaRes.user as Partial<AppUser>;
-              foundUser = {
-                id: profile.id || `usr_${Date.now()}`,
-                name: profile.name || cleanId.split('@')[0],
-                email: (profile.email || cleanId).toLowerCase(),
-                phone: profile.phone || '',
-                role: profile.role || 'consumer',
-                city: profile.city || 'Queimados',
-                neighborhood: profile.neighborhood || 'Queimados',
-                avatar: profile.avatar || '',
-                avatarBgColor: profile.avatarBgColor || '#4E553D',
-                status: profile.status || 'ativo',
-                verified: true,
-                createdAt: profile.createdAt || new Date().toLocaleDateString('pt-BR'),
-              };
+              foundUser = supaRes.user as AppUser;
               StorageService.saveUser(foundUser);
+            } else if (supaRes?.error?.toLowerCase().includes('bloqueada')) {
+              setLoginError(supaRes.error);
+              return;
             }
           } catch {
             // Fall through to error message
@@ -153,22 +142,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       }
     }
 
-    // 3. Sync Supabase session & authoritative role when configured
+    // 3. Sync Supabase session & restore full saved profile from Supabase when configured
     if (isSupabaseConfigured() && foundUser.email) {
       try {
         const supaRes = await authService.signIn(foundUser.email, password);
-        if (!foundUser.password && foundUser.id && !supaRes?.user && supaRes?.error) {
-          // Only fail if user wasn't already verified by /api/auth/login
+        if (supaRes?.error?.toLowerCase().includes('bloqueada')) {
+          setLoginError(supaRes.error);
+          return;
         }
         if (supaRes?.user && !supaRes.error) {
-          const supaProfile = supaRes.user as Partial<AppUser>;
-          if (supaProfile.role && supaProfile.role !== foundUser.role) {
-            foundUser = {
-              ...foundUser,
-              role: supaProfile.role,
-            };
-            StorageService.saveUser(foundUser);
-          }
+          foundUser = {
+            ...foundUser,
+            ...supaRes.user,
+          };
+          StorageService.saveUser(foundUser);
+          StorageService.setCurrentUser(foundUser);
         }
       } catch {
         // Keep verified session
@@ -217,23 +205,27 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setIsSubmitting(true);
 
     try {
-      const userId = `usr_${Date.now()}`;
-      const producerId = regRole === 'producer' ? `prod_${Date.now()}` : undefined;
       const cleanName = regName.trim();
+      const cleanEmail = regEmail.trim().toLowerCase();
       const cleanNeighborhood = regNeighborhood.trim() || 'Queimados';
       const cleanPhone = regPhone.trim() || '(21) 99999-9999';
-      const numericPhone = cleanPhone.replace(/\D/g, '');
+      let userId = `usr_${Date.now()}`;
+      let producerId = regRole === 'producer' ? `prod_${userId}` : undefined;
+      let supabaseUserId: string | undefined;
 
-      const newUser: AppUser = {
+      const baseNewUser: AppUser = {
         id: userId,
         name: cleanName,
-        email: regEmail.trim().toLowerCase(),
-        password: regPassword, // Defined password
+        email: cleanEmail,
+        password: regPassword,
         cpf: regCpf.trim() || undefined,
         phone: cleanPhone,
         role: regRole,
         city: 'Queimados',
         neighborhood: cleanNeighborhood,
+        avatar: '',
+        avatarBgColor: '#4E553D',
+        coverBgColor: '#1F6B38',
         status: 'ativo',
         verified: true,
         createdAt: new Date().toLocaleDateString('pt-BR'),
@@ -242,7 +234,36 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         farmName: regRole === 'producer' ? `Loja de ${cleanName}` : undefined,
       };
 
-      // 1. Persist registration permanently in backend database with scrypt password hash
+      // 1. Register in Supabase Auth & profiles first when configured so the UUID is canonical across devices
+      if (isSupabaseConfigured()) {
+        try {
+          const supaResult = await authService.signUp(cleanEmail, regPassword, baseNewUser);
+          if (supaResult?.error) {
+            const lowerErr = supaResult.error.toLowerCase();
+            if (lowerErr.includes('already registered') || lowerErr.includes('already exists')) {
+              setRegError('Este e-mail já está cadastrado no ConeQta.');
+              setIsSubmitting(false);
+              return;
+            }
+          }
+          if (supaResult?.user?.id) {
+            supabaseUserId = supaResult.user.id;
+            userId = supaResult.user.id;
+            producerId = regRole === 'producer' ? (supaResult.user.producerId || `prod_${userId}`) : undefined;
+          }
+        } catch {
+          // Fallback to server/local registration
+        }
+      }
+
+      const newUser: AppUser = {
+        ...baseNewUser,
+        id: userId,
+        producerId,
+        farmId: producerId,
+      };
+
+      // 2. Persist registration permanently in backend database with scrypt password hash
       let registeredUser: AppUser = newUser;
       try {
         const regResp = await fetch('/api/auth/register', {
@@ -264,29 +285,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         }
       } catch {
         // Fallback to local/Supabase persistence
-      }
-
-      // 2. Sync with Supabase Auth only when configured (avoids duplicate local records)
-      let supabaseUserId: string | undefined;
-      if (isSupabaseConfigured()) {
-        try {
-          const supaResult = await authService.signUp(registeredUser.email, regPassword, {
-            id: registeredUser.id,
-            name: registeredUser.name,
-            role: registeredUser.role,
-            phone: registeredUser.phone,
-            city: registeredUser.city,
-            neighborhood: registeredUser.neighborhood,
-            producerId,
-            farmId: producerId,
-            farmName: registeredUser.farmName,
-          });
-          if (supaResult?.user?.id) {
-            supabaseUserId = supaResult.user.id;
-          }
-        } catch {
-          // Fallback to local/backend session
-        }
       }
 
       // 3. If registering as a seller, create and persist Seller/Producer profile globally

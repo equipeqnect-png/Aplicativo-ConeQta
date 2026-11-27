@@ -145,6 +145,19 @@ export default function App() {
         setProducts(syncedProducts);
       })
       .catch(() => {});
+
+    if (StorageService.getCurrentUser()) {
+      authService
+        .getCurrentSessionUser()
+        .then((sessionUser) => {
+          if (sessionUser) {
+            setCurrentUser((prev) => (prev ? { ...prev, ...sessionUser } : sessionUser));
+          } else {
+            setCurrentUser(null);
+          }
+        })
+        .catch(() => {});
+    }
   }, []);
 
   // Load app feedbacks and latest users list from backend/Supabase when signed in as admin
