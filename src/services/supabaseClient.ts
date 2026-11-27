@@ -7,11 +7,15 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 export const isSupabaseConfigured = (): boolean => {
+  const normalizedUrl = supabaseUrl.trim().toLowerCase();
+  const normalizedKey = supabaseAnonKey.trim().toLowerCase();
   return Boolean(
-    supabaseUrl && 
-    supabaseAnonKey && 
-    supabaseUrl.startsWith('https://') && 
-    !supabaseUrl.includes('seu-projeto')
+    normalizedUrl &&
+    normalizedKey &&
+    normalizedUrl.startsWith('https://') &&
+    !normalizedUrl.includes('seu-projeto') &&
+    !normalizedUrl.includes('seu-id-do-projeto') &&
+    !normalizedKey.includes('sua-chave')
   );
 };
 

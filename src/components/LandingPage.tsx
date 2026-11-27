@@ -127,8 +127,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               <Search className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
             </button>
 
-            {/* Item 10: User status & Login / Panel redirection */}
-            {currentUser ? (
+            {/* Item 10: Logged-in user panel redirection only (Entrar sits beside Ver Catálogo in hero) */}
+            {currentUser && (
               <button
                 id="landing-icon-app-panel"
                 onClick={onNavigateApp || onNavigateLogin}
@@ -143,20 +143,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                   {currentUser.name.split(' ')[0]} • Painel
                 </span>
                 <ChevronDown className="w-3.5 h-3.5 text-emerald-200" />
-              </button>
-            ) : (
-              <button
-                id="landing-icon-login"
-                onClick={onNavigateLogin}
-                title="Acessar conta / Login"
-                aria-label="Página de login"
-                className="flex items-center gap-1.5 pl-1.5 pr-3 py-1 rounded-full bg-stone-900 text-white hover:bg-emerald-800 transition-all hover:scale-105 active:scale-95 shadow-xs cursor-pointer"
-              >
-                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-stone-800 flex items-center justify-center text-lime-300">
-                  <User className="w-4 h-4" />
-                </div>
-                <span className="text-xs font-bold hidden sm:inline">Entrar</span>
-                <ChevronDown className="w-3.5 h-3.5 text-stone-400 group-hover:text-white" />
               </button>
             )}
 
@@ -210,34 +196,34 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
             </div>
 
-            {/* CTA Buttons: VER CATÁLOGO, RANKING & MEU PAINEL */}
-            <div className="pt-2 flex flex-wrap items-center gap-3">
+            {/* CTA Buttons: VER CATÁLOGO & ENTRAR (ou ACESSAR PAINEL se já logado) com igual destaque */}
+            <div className="pt-2 flex flex-wrap items-center gap-3 sm:gap-4">
               <button
                 id="landing-btn-get-started"
                 onClick={onGetStarted}
-                className="px-8 sm:px-10 py-3.5 sm:py-4 rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600 hover:from-emerald-600 hover:to-teal-500 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-[1.03] active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer"
+                className="px-8 sm:px-10 py-3.5 sm:py-4 rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600 hover:from-emerald-600 hover:to-teal-500 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-[1.03] active:scale-[0.98] transition-all flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <span>VER CATÁLOGO</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
 
-              <button
-                id="landing-btn-ranking"
-                onClick={onNavigateRanking}
-                className="px-6 py-3.5 sm:py-4 rounded-full bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-900 font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-sm hover:scale-[1.03] active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer"
-              >
-                <Trophy className="w-4 h-4 text-amber-600" />
-                <span>RANKING</span>
-              </button>
-
-              {currentUser && onNavigateApp && (
+              {currentUser && onNavigateApp ? (
                 <button
                   id="landing-btn-go-to-app"
                   onClick={onNavigateApp}
-                  className="px-6 sm:px-8 py-3.5 sm:py-4 rounded-full bg-white border border-stone-200 hover:bg-stone-50 text-stone-800 font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-sm hover:scale-[1.03] active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer"
+                  className="px-8 sm:px-10 py-3.5 sm:py-4 rounded-full bg-stone-900 hover:bg-stone-800 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-stone-900/20 hover:scale-[1.03] active:scale-[0.98] transition-all flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
                 >
+                  <User className="w-4 h-4 text-lime-300" />
                   <span>ACESSAR PAINEL</span>
-                  <ArrowRight className="w-4 h-4 text-emerald-600" />
+                </button>
+              ) : (
+                <button
+                  id="landing-btn-login"
+                  onClick={onNavigateLogin}
+                  className="px-8 sm:px-10 py-3.5 sm:py-4 rounded-full bg-stone-900 hover:bg-stone-800 text-white font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-stone-900/20 hover:scale-[1.03] active:scale-[0.98] transition-all flex items-center justify-center gap-2 whitespace-nowrap shrink-0 cursor-pointer"
+                >
+                  <User className="w-4 h-4 text-lime-300" />
+                  <span>ENTRAR</span>
                 </button>
               )}
             </div>
