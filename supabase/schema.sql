@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     city TEXT DEFAULT 'Queimados',
     neighborhood TEXT,
     avatar TEXT,
+    avatar_bg_color TEXT DEFAULT '#4E553D',
     verified BOOLEAN DEFAULT false,
     status user_status DEFAULT 'ativo',
     producer_id TEXT,
@@ -77,7 +78,9 @@ CREATE TABLE IF NOT EXISTS public.producers (
     bio TEXT,
     story TEXT,
     avatar TEXT,
+    avatar_bg_color TEXT DEFAULT '#4E553D',
     cover_image TEXT,
+    cover_bg_color TEXT DEFAULT '#1F6B38',
     gallery_images JSONB DEFAULT '[]'::jsonb,
     city TEXT DEFAULT 'Queimados',
     state TEXT DEFAULT 'RJ',
@@ -282,17 +285,23 @@ CREATE OR REPLACE TRIGGER trg_orders_updated_at
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO public.profiles (id, email, name, role, avatar)
+    INSERT INTO public.profiles (id, email, name, role, phone, city, neighborhood, avatar)
     VALUES (
         NEW.id,
         NEW.email,
         COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
         COALESCE((NEW.raw_user_meta_data->>'role')::user_role, 'consumer'::user_role),
-        COALESCE(NEW.raw_user_meta_data->>'avatar', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80')
+        NEW.raw_user_meta_data->>'phone',
+        COALESCE(NEW.raw_user_meta_data->>'city', 'Queimados'),
+        COALESCE(NEW.raw_user_meta_data->>'neighborhood', 'Queimados'),
+        COALESCE(NEW.raw_user_meta_data->>'avatar', 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=400&q=80')
     )
     ON CONFLICT (id) DO UPDATE
     SET 
         name = EXCLUDED.name,
+        phone = COALESCE(EXCLUDED.phone, public.profiles.phone),
+        city = COALESCE(EXCLUDED.city, public.profiles.city),
+        neighborhood = COALESCE(EXCLUDED.neighborhood, public.profiles.neighborhood),
         avatar = EXCLUDED.avatar;
     RETURN NEW;
 END;
@@ -359,7 +368,12 @@ CREATE POLICY "Produtores são públicos para leitura"
     ON public.producers FOR SELECT USING (true);
 
 CREATE POLICY "Produtores podem atualizar seus dados" 
-    ON public.producers FOR UPDATE USING (auth.uid() = user_id OR auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin'));
+    ON public.producers FOR UPDATE USING (
+        auth.uid() = user_id
+        OR user_id IS NULL
+        OR auth.uid() IN (SELECT id FROM public.profiles WHERE role = 'admin')
+        OR auth.role() IN ('authenticated', 'anon')
+    );
 
 CREATE POLICY "Inserção de produtor permitida" 
     ON public.producers FOR INSERT WITH CHECK (true);

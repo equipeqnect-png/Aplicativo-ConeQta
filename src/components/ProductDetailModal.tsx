@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Product, Producer, ReviewItem, AppUser } from '../types';
 import { StorageService } from '../services/storage';
+import { AvatarDisplay } from './ProfileMedia';
 
 interface ProductDetailModalProps {
   product: Product | null;
@@ -184,10 +185,12 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 <div className="bg-emerald-50/70 border border-emerald-200/70 rounded-2xl p-4 space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3 min-w-0">
-                      <img
+                      <AvatarDisplay
                         src={producer.avatar}
-                        alt={producer.name}
-                        className="w-12 h-12 rounded-full object-cover border-2 border-emerald-600 shrink-0"
+                        bgColor={producer.avatarBgColor}
+                        name={producer.name || producer.farmName}
+                        className="w-12 h-12 rounded-full border-2 border-emerald-600 shrink-0"
+                        textClassName="text-base"
                       />
                       <div className="min-w-0">
                         <h4 className="font-bold text-stone-900 text-sm truncate">{producer.farmName}</h4>
@@ -213,7 +216,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-stone-500 pt-2 border-t border-emerald-100">
                     <span className="flex items-center gap-1 text-emerald-900 font-medium">
                       <MapPin className="w-3 h-3 text-emerald-600" />
-                      {producer.location.neighborhood || producer.location.city} ({producer.location.distanceKm} km)
+                      {producer.location.neighborhood || producer.location.city}, {producer.location.city || 'Queimados'}
                     </span>
                     {onOpenProducerProfile && (
                       <button

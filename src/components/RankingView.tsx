@@ -16,6 +16,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import { Producer, Product, ReviewItem, Order } from '../types';
+import { AvatarDisplay } from './ProfileMedia';
 
 export type RankingPeriod = 'diario' | 'semanal' | 'mensal';
 
@@ -332,11 +333,12 @@ export const RankingView: React.FC<RankingViewProps> = ({
                           </div>
 
                           {/* Avatar */}
-                          <img
+                          <AvatarDisplay
                             src={producer.avatar}
-                            alt={producer.name}
-                            referrerPolicy="no-referrer"
-                            className="w-14 h-14 rounded-2xl object-cover border border-stone-200 shrink-0 bg-stone-100"
+                            bgColor={producer.avatarBgColor}
+                            name={producer.name || producer.farmName}
+                            className="w-14 h-14 rounded-2xl border border-stone-200 shrink-0"
+                            textClassName="text-lg"
                           />
 
                           <div className="min-w-0">

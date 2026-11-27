@@ -34,7 +34,8 @@ import {
   X,
   AlertCircle,
   CheckCircle2,
-  MessageSquarePlus
+  MessageSquarePlus,
+  UserCog
 } from 'lucide-react';
 import { Producer, Product, Order, ChatMessage, AppUser, ProducerStory, Category, Certification } from '../types';
 import { ProductFormModal } from './ProductFormModal';
@@ -43,6 +44,8 @@ import { StoryPostModal } from './StoryPostModal';
 import { StoryViewerModal } from './StoryViewerModal';
 import { EntrepreneurProfileModal } from './EntrepreneurProfileModal';
 import { AppFeedbackTab } from './AppFeedbackTab';
+import { AccountSettingsTab } from './AccountSettingsTab';
+import { AvatarDisplay, CoverDisplay, ColorPalettePicker } from './ProfileMedia';
 
 interface ProducerViewProps {
   currentProducer: Producer;
@@ -55,6 +58,8 @@ interface ProducerViewProps {
   onUpdateOrderStatus: (orderId: string, status: Order['status']) => void;
   onSendMessage: (msg: ChatMessage) => void;
   onSaveProducer: (producer: Producer) => void;
+  onUserUpdated?: (user: AppUser) => void;
+  onAccountDeleted?: () => void;
 }
 
 export const ProducerView: React.FC<ProducerViewProps> = ({
@@ -68,9 +73,11 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
   onUpdateOrderStatus,
   onSendMessage,
   onSaveProducer,
+  onUserUpdated,
+  onAccountDeleted,
 }) => {
-  // Tabs: Catálogo, Stories, Conversas, Propriedade, Avaliar Aplicativo
-  const [activeTab, setActiveTab] = useState<'catalogo' | 'stories' | 'conversas' | 'propriedade' | 'feedback'>('catalogo');
+  // Tabs: Catálogo, Stories, Conversas, Propriedade, Avaliar Aplicativo, Configurações da Conta
+  const [activeTab, setActiveTab] = useState<'catalogo' | 'stories' | 'conversas' | 'propriedade' | 'feedback' | 'conta'>('catalogo');
 
   // Stories state
   const [producerStories, setProducerStories] = useState<ProducerStory[]>([]);
@@ -101,15 +108,13 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
   const [neighborhood, setNeighborhood] = useState(currentProducer.location.neighborhood || 'Zona Rural');
   const [city, setCity] = useState(currentProducer.location.city || 'Queimados');
   const [state, setState] = useState(currentProducer.location.state || 'RJ');
-  const [distanceKm, setDistanceKm] = useState<number>(currentProducer.location.distanceKm || 5);
   const [establishedYear, setEstablishedYear] = useState<number>(currentProducer.establishedYear || 2020);
-  const [hectares, setHectares] = useState<number>(currentProducer.hectares || 1);
-  const [avatar, setAvatar] = useState(currentProducer.avatar);
-  const [coverImage, setCoverImage] = useState(currentProducer.coverImage);
+  const [avatar, setAvatar] = useState(currentProducer.avatar || '');
+  const [avatarBgColor, setAvatarBgColor] = useState(currentProducer.avatarBgColor || currentUser?.avatarBgColor || '#4E553D');
+  const [coverImage, setCoverImage] = useState(currentProducer.coverImage || '');
+  const [coverBgColor, setCoverBgColor] = useState(currentProducer.coverBgColor || currentUser?.coverBgColor || '#1F6B38');
   const [galleryImages, setGalleryImages] = useState<string[]>(
-    currentProducer.galleryImages && currentProducer.galleryImages.length > 0 
-      ? currentProducer.galleryImages 
-      : [currentProducer.coverImage]
+    (currentProducer.galleryImages || []).filter(Boolean)
   );
   const [harvestDays, setHarvestDays] = useState<string[]>(currentProducer.harvestDays || ['Segunda', 'Quarta', 'Sexta']);
   const [deliveryMethods, setDeliveryMethods] = useState<string[]>(
@@ -117,10 +122,6 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
   );
   const [certifications, setCertifications] = useState<Certification[]>(currentProducer.certifications || ['familiar']);
 
-  // URL input states for adding photos
-  const [newGalleryPhotoUrl, setNewGalleryPhotoUrl] = useState('');
-  const [newAvatarUrl, setNewAvatarUrl] = useState('');
-  const [newCoverUrl, setNewCoverUrl] = useState('');
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -144,16 +145,12 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
     setNeighborhood(currentProducer.location.neighborhood || 'Zona Rural');
     setCity(currentProducer.location.city || 'Queimados');
     setState(currentProducer.location.state || 'RJ');
-    setDistanceKm(currentProducer.location.distanceKm || 5);
     setEstablishedYear(currentProducer.establishedYear || 2020);
-    setHectares(currentProducer.hectares || 1);
-    setAvatar(currentProducer.avatar);
-    setCoverImage(currentProducer.coverImage);
-    setGalleryImages(
-      currentProducer.galleryImages && currentProducer.galleryImages.length > 0
-        ? currentProducer.galleryImages
-        : [currentProducer.coverImage]
-    );
+    setAvatar(currentProducer.avatar || '');
+    setAvatarBgColor(currentProducer.avatarBgColor || currentUser?.avatarBgColor || '#4E553D');
+    setCoverImage(currentProducer.coverImage || '');
+    setCoverBgColor(currentProducer.coverBgColor || currentUser?.coverBgColor || '#1F6B38');
+    setGalleryImages((currentProducer.galleryImages || []).filter(Boolean));
     setHarvestDays(currentProducer.harvestDays || ['Segunda', 'Quarta', 'Sexta']);
     setDeliveryMethods(currentProducer.deliveryMethods || ['Entrega Local em Queimados', 'Retirada no Sítio']);
     setCertifications(currentProducer.certifications || ['familiar']);
@@ -197,22 +194,6 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
     e.target.value = '';
   };
 
-  // Quick avatar suggestions
-  const suggestedAvatars = [
-    { label: 'Agricultora', url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80' },
-    { label: 'Produtor', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80' },
-    { label: 'Empreendedora', url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80' },
-    { label: 'Comerciante', url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80' }
-  ];
-
-  // Quick gallery photo suggestions
-  const suggestedGalleryPhotos = [
-    { label: 'Plantação & Horta', url: 'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=800&q=80' },
-    { label: 'Banca da Feira', url: 'https://images.unsplash.com/photo-1488459716781-31db52582fe9?auto=format&fit=crop&w=800&q=80' },
-    { label: 'Sítio Familiar', url: 'https://images.unsplash.com/photo-1592417817098-8f3d6910985c?auto=format&fit=crop&w=800&q=80' },
-    { label: 'Empório & Quitutes', url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80' }
-  ];
-
   // Days of week
   const weekDays = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 
@@ -232,11 +213,12 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
       category,
       phone: phone.trim(),
       whatsapp: whatsapp.trim() || phone.trim(),
-      avatar: avatar.trim() || currentProducer.avatar,
-      coverImage: coverImage.trim() || currentProducer.coverImage,
+      avatar: avatar.trim(),
+      avatarBgColor,
+      coverImage: coverImage.trim(),
+      coverBgColor,
       galleryImages: galleryImages.filter(Boolean),
       establishedYear: Number(establishedYear) || currentProducer.establishedYear,
-      hectares: Number(hectares) || currentProducer.hectares,
       harvestDays,
       deliveryMethods,
       certifications,
@@ -246,7 +228,6 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
         neighborhood: neighborhood.trim(),
         city: city.trim() || 'Queimados',
         state: state.trim() || 'RJ',
-        distanceKm: Number(distanceKm) || 5,
       }
     };
 
@@ -259,14 +240,17 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
         name: producerName.trim() || currentUser.name,
         phone: phone.trim() || currentUser.phone,
         farmName: farmName.trim() || currentUser.farmName,
-        avatar: avatar.trim() || currentUser.avatar,
+        avatar: avatar.trim(),
+        avatarBgColor,
+        coverBgColor,
       };
       StorageService.saveUser(updatedUser);
       StorageService.setCurrentUser(updatedUser);
+      onUserUpdated?.(updatedUser);
     }
 
     setIsSaving(false);
-    setSaveSuccessMsg('Dados da propriedade, endereço, contato e fotos atualizados com sucesso!');
+    setSaveSuccessMsg('Perfil, endereço, contato e fotos atualizados com sucesso!');
     setTimeout(() => {
       setSaveSuccessMsg('');
     }, 4500);
@@ -309,10 +293,11 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
       {/* 1. Panoramic Farm Hero Banner */}
       <div className="bg-stone-800 rounded-3xl overflow-hidden shadow-sm relative border border-stone-300">
         
-        {/* Cover Photo */}
+        {/* Cover Photo or Background Color */}
         <div className="h-44 sm:h-56 w-full relative">
-          <img
+          <CoverDisplay
             src={currentProducer.coverImage}
+            bgColor={currentProducer.coverBgColor || coverBgColor}
             alt={currentProducer.farmName}
             className="w-full h-full object-cover brightness-75"
           />
@@ -325,15 +310,17 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
           <div className="flex items-center gap-4">
             {/* Avatar */}
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 border-white/80 shadow-md bg-stone-100 shrink-0 relative group">
-              <img
+              <AvatarDisplay
                 src={currentProducer.avatar}
-                alt={currentProducer.name}
-                className="w-full h-full object-cover"
+                bgColor={currentProducer.avatarBgColor || avatarBgColor}
+                name={currentProducer.name || currentProducer.farmName}
+                className="w-full h-full"
+                textClassName="text-2xl"
               />
               <button
                 type="button"
                 onClick={() => setActiveTab('propriedade')}
-                title="Editar foto do perfil"
+                title="Editar Perfil"
                 className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[10px] font-bold cursor-pointer"
               >
                 <Camera className="w-4 h-4" />
@@ -364,7 +351,7 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
           {/* Quick Action Buttons & Rating on right */}
           <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
             
-            {/* Direct button to Edit Property */}
+            {/* Direct button to Edit Profile */}
             <button
               type="button"
               id="hero-btn-edit-property"
@@ -372,7 +359,7 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
               className="bg-white/20 hover:bg-white/30 active:bg-white/40 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/30 flex items-center gap-1.5 text-xs font-bold text-white transition-all shadow-sm cursor-pointer"
             >
               <Edit3 className="w-3.5 h-3.5 text-amber-300" />
-              <span>Editar Propriedade & Fotos</span>
+              <span>Editar Perfil</span>
             </button>
 
             {/* Preview as customer */}
@@ -440,7 +427,7 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
             <span>Conversas ({producerChats.length})</span>
           </button>
 
-          {/* DADOS DA PROPRIEDADE (Com destaque de edição) */}
+          {/* EDITAR PERFIL */}
           <button
             id="tab-producer-property-btn"
             onClick={() => setActiveTab('propriedade')}
@@ -451,7 +438,7 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
             }`}
           >
             <Settings className="w-4 h-4 text-[#D35400]" />
-            <span>Editar Dados da Propriedade & Fotos</span>
+            <span>Editar Perfil</span>
           </button>
 
           {/* AVALIAR APLICATIVO (Privado para Administrador) */}
@@ -466,6 +453,20 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
           >
             <MessageSquarePlus className="w-4 h-4 text-[#D35400]" />
             <span>Avaliar Aplicativo</span>
+          </button>
+
+          {/* CONFIGURAÇÕES DA CONTA */}
+          <button
+            id="tab-producer-account-btn"
+            onClick={() => setActiveTab('conta')}
+            className={`flex items-center gap-2 px-5 py-3.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+              activeTab === 'conta'
+                ? 'border-[#D35400] text-[#D35400] bg-orange-50/40'
+                : 'border-transparent text-stone-600 hover:text-stone-900 hover:bg-stone-50'
+            }`}
+          >
+            <UserCog className="w-4 h-4 text-[#D35400]" />
+            <span>Configurações da Conta</span>
           </button>
 
         </div>
@@ -675,11 +676,11 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
             <div>
               <div className="flex items-center gap-2 text-xs font-bold text-[#D35400] uppercase tracking-wider mb-1">
                 <Store className="w-4 h-4" />
-                <span>Gestão da Propriedade & Perfil</span>
+                <span>Gestão do Perfil e Loja</span>
               </div>
-              <h3 className="font-bold text-stone-900 text-xl font-serif">Editar Informações e Fotos</h3>
+              <h3 className="font-bold text-stone-900 text-xl font-serif">Editar Perfil</h3>
               <p className="text-xs text-stone-500 mt-0.5">
-                Atualize o nome da propriedade, endereço, dados de contato, foto de perfil e galeria de fotos da loja.
+                Atualize o nome da propriedade, endereço, dados de contato, foto de perfil, capa e galeria de fotos da loja.
               </p>
             </div>
 
@@ -735,17 +736,19 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
               
               {/* Foto de Perfil / Avatar */}
-              <div className="md:col-span-4 flex flex-col items-center sm:items-start space-y-3">
+              <div className="md:col-span-5 flex flex-col items-center sm:items-start space-y-3">
                 <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider">
-                  Foto de Perfil (Avatar)
+                  Foto de Perfil
                 </label>
                 
                 <div className="relative group">
                   <div className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-stone-200 shadow-md bg-stone-100">
-                    <img
+                    <AvatarDisplay
                       src={avatar}
-                      alt={producerName}
-                      className="w-full h-full object-cover"
+                      bgColor={avatarBgColor}
+                      name={producerName || farmName}
+                      className="w-full h-full"
+                      textClassName="text-2xl"
                     />
                   </div>
                   <button
@@ -767,64 +770,43 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
                   className="hidden"
                 />
 
-                <div className="w-full space-y-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => avatarFileInputRef.current?.click()}
-                    className="w-full py-2 px-3 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <Upload className="w-3.5 h-3.5 text-stone-500" />
-                    <span>Carregar Foto do Aparelho</span>
-                  </button>
+                <div className="w-full space-y-2.5 pt-1">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => avatarFileInputRef.current?.click()}
+                      className="flex-1 py-2 px-3 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-stone-500" />
+                      <span>Carregar Foto do Aparelho</span>
+                    </button>
 
-                  <div>
-                    <span className="block text-[10px] text-stone-400 mb-1">Ou cole o link direto (URL):</span>
-                    <div className="flex gap-1.5">
-                      <input
-                        type="url"
-                        value={newAvatarUrl}
-                        onChange={(e) => setNewAvatarUrl(e.target.value)}
-                        placeholder="https://..."
-                        className="flex-1 px-3 py-1.5 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-800"
-                      />
+                    {avatar && (
                       <button
                         type="button"
-                        onClick={() => {
-                          if (newAvatarUrl.trim()) {
-                            setAvatar(newAvatarUrl.trim());
-                            setNewAvatarUrl('');
-                          }
-                        }}
-                        className="px-2.5 py-1.5 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold rounded-lg cursor-pointer"
+                        onClick={() => setAvatar('')}
+                        className="py-2 px-3 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        title="Remover foto de perfil"
                       >
-                        Aplicar
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remover</span>
                       </button>
-                    </div>
+                    )}
                   </div>
 
-                  {/* Sugestões Rápidas de Avatares */}
-                  <div className="pt-1">
-                    <span className="block text-[10px] text-stone-400 mb-1.5">Sugestões rápidas:</span>
-                    <div className="flex gap-2">
-                      {suggestedAvatars.map((sug, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => setAvatar(sug.url)}
-                          title={`Usar avatar de ${sug.label}`}
-                          className="w-8 h-8 rounded-lg overflow-hidden border border-stone-200 hover:border-[#D35400] hover:scale-105 transition-all cursor-pointer"
-                        >
-                          <img src={sug.url} alt={sug.label} className="w-full h-full object-cover" />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  {!avatar && (
+                    <ColorPalettePicker
+                      label="Cor de Fundo do Perfil (sem foto)"
+                      selectedColor={avatarBgColor}
+                      onChange={setAvatarBgColor}
+                    />
+                  )}
                 </div>
 
               </div>
 
               {/* Nome do Produtor e Especialidade */}
-              <div className="md:col-span-8 space-y-4">
+              <div className="md:col-span-7 space-y-4">
                 <div>
                   <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1.5">
                     Nome Completo do Vendedor / Responsável *
@@ -928,33 +910,17 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1.5">
-                  Ano de Início / Fundação
-                </label>
-                <input
-                  type="number"
-                  value={establishedYear}
-                  onChange={(e) => setEstablishedYear(Number(e.target.value))}
-                  placeholder="2018"
-                  className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 focus:bg-white focus:outline-hidden focus:border-[#D35400]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1.5">
-                  Área da Propriedade (Hectares ou m²)
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={hectares}
-                  onChange={(e) => setHectares(Number(e.target.value))}
-                  placeholder="Ex: 4.5"
-                  className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 focus:bg-white focus:outline-hidden focus:border-[#D35400]"
-                />
-              </div>
+            <div>
+              <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1.5">
+                Ano de Início / Fundação
+              </label>
+              <input
+                type="number"
+                value={establishedYear}
+                onChange={(e) => setEstablishedYear(Number(e.target.value))}
+                placeholder="2018"
+                className="w-full sm:max-w-xs px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 focus:bg-white focus:outline-hidden focus:border-[#D35400]"
+              />
             </div>
 
             <div>
@@ -1011,7 +977,7 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1.5">
                   Cidade
@@ -1032,20 +998,6 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
                   type="text"
                   value={state}
                   onChange={(e) => setState(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 focus:bg-white focus:outline-hidden focus:border-[#D35400]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-stone-600 uppercase tracking-wider mb-1.5">
-                  Distância Estimada até o Centro (km)
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={distanceKm}
-                  onChange={(e) => setDistanceKm(Number(e.target.value))}
-                  placeholder="5"
                   className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 focus:bg-white focus:outline-hidden focus:border-[#D35400]"
                 />
               </div>
@@ -1115,7 +1067,12 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
               </label>
 
               <div className="h-40 sm:h-48 rounded-2xl overflow-hidden border border-stone-200 relative group bg-stone-100">
-                <img src={coverImage} alt="Capa da propriedade" className="w-full h-full object-cover" />
+                <CoverDisplay
+                  src={coverImage}
+                  bgColor={coverBgColor}
+                  alt="Capa da propriedade"
+                  className="w-full h-full object-cover"
+                />
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                   <button
                     type="button"
@@ -1137,7 +1094,7 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
                 className="hidden"
               />
 
-              <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => coverFileInputRef.current?.click()}
@@ -1147,28 +1104,25 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
                   <span>Carregar Imagem de Capa do Aparelho</span>
                 </button>
 
-                <div className="flex-1 flex gap-2">
-                  <input
-                    type="url"
-                    value={newCoverUrl}
-                    onChange={(e) => setNewCoverUrl(e.target.value)}
-                    placeholder="Ou cole o link da capa (https://...)"
-                    className="flex-1 px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800"
-                  />
+                {coverImage && (
                   <button
                     type="button"
-                    onClick={() => {
-                      if (newCoverUrl.trim()) {
-                        setCoverImage(newCoverUrl.trim());
-                        setNewCoverUrl('');
-                      }
-                    }}
-                    className="px-3 py-2 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold rounded-xl cursor-pointer"
+                    onClick={() => setCoverImage('')}
+                    className="py-2 px-4 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                   >
-                    Aplicar
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remover Foto de Capa</span>
                   </button>
-                </div>
+                )}
               </div>
+
+              {!coverImage && (
+                <ColorPalettePicker
+                  label="Cor de Fundo da Capa (sem foto)"
+                  selectedColor={coverBgColor}
+                  onChange={setCoverBgColor}
+                />
+              )}
             </div>
 
             {/* Galeria de Fotos da Loja / Propriedade */}
@@ -1179,7 +1133,7 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
                     Galeria de Fotos da Propriedade / Loja ({galleryImages.length} fotos)
                   </label>
                   <p className="text-[11px] text-stone-400">
-                    Estas fotos aparecem no seu perfil público para os moradores e clientes de Queimados.
+                    Envie fotos do seu aparelho para exibir no seu perfil público aos moradores e clientes de Queimados.
                   </p>
                 </div>
 
@@ -1202,55 +1156,6 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
                 onChange={(e) => handleFileUpload(e, 'gallery')}
                 className="hidden"
               />
-
-              {/* URL Input to add photo */}
-              <div className="flex gap-2 p-3 bg-stone-50 rounded-2xl border border-stone-200">
-                <input
-                  type="url"
-                  value={newGalleryPhotoUrl}
-                  onChange={(e) => setNewGalleryPhotoUrl(e.target.value)}
-                  placeholder="Ou adicione uma foto por link direto (URL): https://..."
-                  className="flex-1 px-3 py-2 bg-white border border-stone-200 rounded-xl text-xs text-stone-800 focus:outline-hidden focus:border-[#D35400]"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (newGalleryPhotoUrl.trim()) {
-                      setGalleryImages(prev => [...prev, newGalleryPhotoUrl.trim()]);
-                      setNewGalleryPhotoUrl('');
-                    }
-                  }}
-                  className="px-4 py-2 bg-stone-800 hover:bg-stone-900 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
-                >
-                  Adicionar à Galeria
-                </button>
-              </div>
-
-              {/* Sugestões Rápidas de Fotos para Enriquecer a Galeria */}
-              <div>
-                <span className="block text-[10px] text-stone-400 uppercase font-bold tracking-wider mb-2">
-                  Adicionar sugestões rápidas de fotos de Queimados:
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {suggestedGalleryPhotos.map((sug, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => {
-                        if (!galleryImages.includes(sug.url)) {
-                          setGalleryImages(prev => [...prev, sug.url]);
-                        }
-                      }}
-                      className="p-2 rounded-xl border border-stone-200 hover:border-[#D35400] bg-stone-50 hover:bg-orange-50 text-left transition-all group flex items-center gap-2 cursor-pointer"
-                    >
-                      <img src={sug.url} alt={sug.label} className="w-8 h-8 rounded-lg object-cover shrink-0" />
-                      <div className="text-[10px] font-bold text-stone-700 group-hover:text-[#D35400] line-clamp-1">
-                        + {sug.label}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               {/* Grade de Fotos da Galeria */}
               {galleryImages.length === 0 ? (
@@ -1469,6 +1374,18 @@ export const ProducerView: React.FC<ProducerViewProps> = ({
       {/* ==================================================================== */}
       {activeTab === 'feedback' && currentUser && (
         <AppFeedbackTab currentUser={currentUser} accentColor="terracotta" />
+      )}
+
+      {/* ==================================================================== */}
+      {/* TAB 6: CONFIGURAÇÕES DA CONTA                                        */}
+      {/* ==================================================================== */}
+      {activeTab === 'conta' && currentUser && (
+        <AccountSettingsTab
+          currentUser={currentUser}
+          accentColor="terracotta"
+          onUserUpdated={(updated) => onUserUpdated?.(updated)}
+          onAccountDeleted={() => onAccountDeleted?.()}
+        />
       )}
 
       {/* Modal for Product Add/Edit */}

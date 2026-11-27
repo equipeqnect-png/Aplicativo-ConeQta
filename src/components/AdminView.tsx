@@ -19,6 +19,7 @@ import {
   Clock,
   MessageSquarePlus,
   Lock,
+  UserCog,
 } from 'lucide-react';
 import {
   AppUser,
@@ -30,6 +31,8 @@ import {
   SellerReport,
   AppFeedback,
 } from '../types';
+import { AccountSettingsTab } from './AccountSettingsTab';
+import { AvatarDisplay } from './ProfileMedia';
 
 interface AdminViewProps {
   currentUser: AppUser;
@@ -46,6 +49,8 @@ interface AdminViewProps {
   onUpdateReportStatus: (reportId: string, status: SellerReport['status']) => void;
   onUpdateAppFeedbackStatus?: (feedbackId: string, status: AppFeedback['status']) => void;
   onOpenDiagnostics?: () => void;
+  onUserUpdated?: (user: AppUser) => void;
+  onAccountDeleted?: () => void;
 }
 
 const REASON_LABELS: Record<SellerReport['reason'], string> = {
@@ -71,9 +76,11 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onUpdateReportStatus,
   onUpdateAppFeedbackStatus,
   onOpenDiagnostics,
+  onUserUpdated,
+  onAccountDeleted,
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'relatorios' | 'app_feedbacks' | 'denuncias' | 'usuarios' | 'vendedores' | 'produtos' | 'categorias' | 'selos' | 'avaliacoes' | 'mapa'
+    'relatorios' | 'app_feedbacks' | 'denuncias' | 'usuarios' | 'vendedores' | 'produtos' | 'categorias' | 'selos' | 'avaliacoes' | 'mapa' | 'conta'
   >('relatorios');
 
   const [userSearch, setUserSearch] = useState('');
@@ -283,6 +290,18 @@ export const AdminView: React.FC<AdminViewProps> = ({
           >
             <Map className="w-4 h-4" />
             <span>Mapa Geográfico</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('conta')}
+            className={`flex items-center gap-2 px-4 py-3.5 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+              activeTab === 'conta'
+                ? 'border-emerald-700 text-emerald-800 bg-emerald-50/40'
+                : 'border-transparent text-stone-600 hover:text-stone-900 hover:bg-stone-50'
+            }`}
+          >
+            <UserCog className="w-4 h-4" />
+            <span>Minha Conta</span>
           </button>
         </div>
       </div>
@@ -584,7 +603,13 @@ export const AdminView: React.FC<AdminViewProps> = ({
           {producers.map((prod) => (
             <div key={prod.id} className="bg-white rounded-3xl p-6 border border-stone-200 shadow-2xs space-y-3">
               <div className="flex items-center gap-3">
-                <img src={prod.avatar} alt={prod.name} className="w-14 h-14 object-cover rounded-2xl" />
+                <AvatarDisplay
+                  src={prod.avatar}
+                  bgColor={prod.avatarBgColor}
+                  name={prod.name || prod.farmName}
+                  className="w-14 h-14 rounded-2xl shrink-0"
+                  textClassName="text-lg"
+                />
                 <div>
                   <h4 className="font-bold text-sm text-stone-900">{prod.farmName}</h4>
                   <p className="text-xs text-stone-500">{prod.name}</p>
@@ -932,6 +957,16 @@ export const AdminView: React.FC<AdminViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* TAB: MINHA CONTA */}
+      {activeTab === 'conta' && (
+        <AccountSettingsTab
+          currentUser={currentUser}
+          accentColor="dark"
+          onUserUpdated={(updated) => onUserUpdated?.(updated)}
+          onAccountDeleted={() => onAccountDeleted?.()}
+        />
       )}
     </div>
   );

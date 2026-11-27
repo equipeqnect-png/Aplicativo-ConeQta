@@ -40,7 +40,9 @@ export interface Producer {
   bio: string;
   story: string;
   avatar: string;
+  avatarBgColor?: string;
   coverImage: string;
+  coverBgColor?: string;
   galleryImages?: string[];
   location: LocationInfo;
   rating: number;
@@ -139,6 +141,8 @@ export interface AppUser {
   farmName?: string;
   producerId?: string;
   avatar?: string;
+  avatarBgColor?: string;
+  coverBgColor?: string;
   verified?: boolean;
 }
 

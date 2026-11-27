@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Flag, AlertTriangle, ShieldAlert, CheckCircle2, Send } from 'lucide-react';
 import { Producer, AppUser, SellerReport } from '../types';
 import { StorageService } from '../services/storage';
+import { AvatarDisplay } from './ProfileMedia';
 
 interface ReportSellerModalProps {
   producer: Producer | null;
@@ -142,10 +143,12 @@ export const ReportSellerModal: React.FC<ReportSellerModalProps> = ({
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Target seller banner */}
               <div className="p-3.5 bg-red-50/70 border border-red-200/80 rounded-2xl flex items-center gap-3">
-                <img
+                <AvatarDisplay
                   src={producer.avatar}
-                  alt={producer.name}
-                  className="w-11 h-11 rounded-xl object-cover border border-red-200 shrink-0"
+                  bgColor={producer.avatarBgColor}
+                  name={producer.name || producer.farmName}
+                  className="w-11 h-11 rounded-xl border border-red-200 shrink-0"
+                  textClassName="text-sm"
                 />
                 <div className="min-w-0 flex-1">
                   <span className="text-[10px] font-bold uppercase text-red-700 block">

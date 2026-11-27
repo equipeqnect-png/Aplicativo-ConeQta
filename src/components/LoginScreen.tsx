@@ -14,12 +14,12 @@ import {
   Building,
   ShoppingBag
 } from 'lucide-react';
-import { ActiveRoleOption, AppUser, Producer } from '../types';
-import { StorageService } from '../services/storage';
-import { authService } from '../services/supabaseClient';
+import { ActiveRoleOption, AppUser } from '../types';
+import { StorageService, buildProducerFromUser } from '../services/storage';
+import { authService, producersService } from '../services/supabaseClient';
 
 interface LoginScreenProps {
-  onLogin: (roleOption: ActiveRoleOption, user: AppUser) => void;
+  onLogin: (roleOption: ActiveRoleOption, user: AppUser, welcomeNotice?: string) => void;
   users: AppUser[];
   onBackToLanding?: () => void;
   initialTab?: 'login' | 'register';
@@ -164,61 +164,68 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         farmName: regRole === 'producer' ? `Loja de ${cleanName}` : undefined,
       };
 
-      // If registering as a seller, create a corresponding Seller/Producer profile
-      if (regRole === 'producer' && producerId) {
-        const newProducer: Producer = {
-          id: producerId,
-          name: cleanName,
-          farmName: `Loja de ${cleanName}`,
-          tagline: `Produtos e serviços locais em ${cleanNeighborhood}`,
-          bio: `Empreendedor(a) local de ${cleanNeighborhood}, Queimados.`,
-          story: `Bem-vindo ao meu espaço no ConeQta! Edite seu perfil na aba "Editar Perfil & Loja" para adicionar suas fotos e informações.`,
-          avatar: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=400&q=80',
-          coverImage: 'https://images.unsplash.com/photo-1488459716781-31db52582fe9?auto=format&fit=crop&w=1200&q=80',
-          galleryImages: [],
-          location: {
-            city: 'Queimados',
-            state: 'RJ',
-            distanceKm: 1.0,
-            neighborhood: cleanNeighborhood,
-            address: `${cleanNeighborhood}, Queimados - RJ`,
-          },
-          rating: 0,
-          reviewCount: 0,
-          certifications: [],
-          phone: cleanPhone,
-          whatsapp: numericPhone ? (numericPhone.startsWith('55') ? numericPhone : `55${numericPhone}`) : '',
-          establishedYear: new Date().getFullYear(),
-          harvestDays: ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'],
-          deliveryMethods: ['Retirada no Local'],
-          specialty: 'Comércio Local',
-          viewsCount: 0,
-          category: 'outros',
-        };
-        StorageService.saveProducer(newProducer);
-      }
-
-      // Save user to storage
-      StorageService.saveUser(newUser);
-
-      // Attempt Supabase sign up in background
+      // Attempt Supabase sign up first to obtain auth user ID and send confirmation email
+      let supabaseUserId: string | undefined;
+      let supabaseEmailSent = false;
       try {
-        await authService.signUp(newUser.email, regPassword, {
+        const supaResult = await authService.signUp(newUser.email, regPassword, {
           name: newUser.name,
           role: newUser.role,
           phone: newUser.phone,
           city: newUser.city,
           neighborhood: newUser.neighborhood,
+          producerId,
+          farmId: producerId,
+          farmName: newUser.farmName,
         });
+        if (supaResult?.user?.id) {
+          supabaseUserId = supaResult.user.id;
+        }
+        supabaseEmailSent = Boolean(supaResult?.emailSent);
       } catch {
         // Fallback to local session if Supabase not yet configured
       }
 
+      // If registering as a seller, create and persist Seller/Producer profile globally
+      if (regRole === 'producer' && producerId) {
+        const newProducer = buildProducerFromUser(newUser);
+        await producersService.upsert(newProducer, supabaseUserId);
+      }
+
+      // Save user to local storage & backend API
+      StorageService.saveUser(newUser);
+
+      // Dispatch welcome & registration confirmation email via backend API
+      let apiEmailSent = false;
+      try {
+        const emailResp = await fetch('/api/auth/welcome-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: newUser.name,
+            email: newUser.email,
+            role: newUser.role,
+            neighborhood: newUser.neighborhood,
+          }),
+        });
+        if (emailResp.ok) {
+          const emailData = await emailResp.json();
+          apiEmailSent = Boolean(emailData?.sent);
+        }
+      } catch {
+        // Continue login even if mail server is unreachable
+      }
+
+      const welcomeNotice =
+        apiEmailSent || supabaseEmailSent
+          ? `Cadastro realizado com sucesso! Enviamos um e-mail de boas-vindas e confirmação para ${newUser.email}.`
+          : `Cadastro realizado com sucesso para ${newUser.email}! Bem-vindo(a) ao ConeQta.`;
+
       // Log in and route
       if (regRole === 'producer') {
-        onLogin('producer', newUser);
+        onLogin('producer', newUser, welcomeNotice);
       } else {
-        onLogin('consumer', newUser);
+        onLogin('consumer', newUser, welcomeNotice);
       }
     } catch (err: any) {
       setRegError(err?.message || 'Erro ao criar conta. Tente novamente.');

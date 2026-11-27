@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Video, Sparkles, Clock, Play } from 'lucide-react';
 import { ProducerStory, Producer, AppUser } from '../types';
+import { AvatarDisplay } from './ProfileMedia';
 
 interface StoriesBarProps {
   stories: ProducerStory[];
@@ -59,10 +60,12 @@ export const StoriesBar: React.FC<StoriesBarProps> = ({
             className="flex flex-col items-center gap-1.5 cursor-pointer shrink-0 group"
           >
             <div className="relative w-16 h-16 rounded-full border-2 border-dashed border-emerald-600 flex items-center justify-center p-1 bg-emerald-50/50 group-hover:scale-105 transition-transform">
-              <img
-                src={currentUser.avatar || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80'}
-                alt="Seu Perfil"
-                className="w-full h-full rounded-full object-cover"
+              <AvatarDisplay
+                src={currentUser.avatar}
+                bgColor={currentUser.avatarBgColor || '#1F6B38'}
+                name={currentUser.name}
+                className="w-full h-full rounded-full"
+                textClassName="text-base"
               />
               <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-600 text-white rounded-full flex items-center justify-center shadow-md">
                 <Plus className="w-3.5 h-3.5" />
@@ -85,11 +88,12 @@ export const StoriesBar: React.FC<StoriesBarProps> = ({
               {/* Animated glowing gradient ring like Instagram */}
               <div className="relative w-16 h-16 rounded-full p-[2.5px] bg-gradient-to-tr from-amber-400 via-pink-500 to-emerald-500 group-hover:scale-105 transition-transform shadow-xs">
                 <div className="w-full h-full bg-white rounded-full p-0.5 overflow-hidden">
-                  <img
-                    src={story.producerAvatar || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80'}
-                    alt={story.producerName}
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full rounded-full object-cover"
+                  <AvatarDisplay
+                    src={story.producerAvatar}
+                    bgColor="#4E553D"
+                    name={story.producerName || story.producerFarm}
+                    className="w-full h-full rounded-full"
+                    textClassName="text-base"
                   />
                 </div>
                 <div className="absolute -bottom-0.5 right-1 w-4 h-4 bg-emerald-600 text-white rounded-full flex items-center justify-center text-[9px] shadow-xs">

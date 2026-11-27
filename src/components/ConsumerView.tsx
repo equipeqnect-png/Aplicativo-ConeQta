@@ -12,6 +12,9 @@ import {
   ExternalLink,
   Package,
   MessageSquarePlus,
+  UserCog,
+  Upload,
+  Trash2,
 } from 'lucide-react';
 import { Product, Producer, AppUser, ProducerStory, ReviewItem, Order } from '../types';
 import { UserAddressConfig, StorageService } from '../services/storage';
@@ -20,6 +23,8 @@ import { StoryViewerModal } from './StoryViewerModal';
 import { StoryPostModal } from './StoryPostModal';
 import { RankingView } from './RankingView';
 import { AppFeedbackTab } from './AppFeedbackTab';
+import { AccountSettingsTab } from './AccountSettingsTab';
+import { AvatarDisplay, CoverDisplay, ColorPalettePicker } from './ProfileMedia';
 
 interface ConsumerViewProps {
   currentUser: AppUser;
@@ -34,6 +39,8 @@ interface ConsumerViewProps {
   onOpenProductDetail: (product: Product) => void;
   onOpenProducerProfile: (producer: Producer) => void;
   onReportProducer: (producer: Producer) => void;
+  onUserUpdated?: (user: AppUser) => void;
+  onAccountDeleted?: () => void;
 }
 
 export const ConsumerView: React.FC<ConsumerViewProps> = ({
@@ -49,8 +56,10 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
   onOpenProductDetail,
   onOpenProducerProfile,
   onReportProducer,
+  onUserUpdated,
+  onAccountDeleted,
 }) => {
-  const [activePill, setActivePill] = useState<'catalogo' | 'lojas' | 'ranking' | 'favorites' | 'feedback' | 'profile'>('catalogo');
+  const [activePill, setActivePill] = useState<'catalogo' | 'lojas' | 'ranking' | 'favorites' | 'feedback' | 'profile' | 'conta'>('catalogo');
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -60,6 +69,26 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
   const [stories, setStories] = useState<ProducerStory[]>([]);
   const [selectedStoryIndex, setSelectedStoryIndex] = useState<number | null>(null);
   const [isPostStoryOpen, setIsPostStoryOpen] = useState(false);
+  const profileAvatarInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleConsumerAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || file.size > 6 * 1024 * 1024) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        const updatedUser: AppUser = {
+          ...currentUser,
+          avatar: reader.result,
+        };
+        StorageService.saveUser(updatedUser);
+        StorageService.setCurrentUser(updatedUser);
+        onUserUpdated?.(updatedUser);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   const loadStories = () => {
     setStories(StorageService.getStories());
@@ -221,11 +250,24 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
             <User className="w-3.5 h-3.5" />
             <span>Meu Perfil</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setActivePill('conta')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activePill === 'conta'
+                ? 'bg-[#4E553D] text-white shadow-2xs'
+                : 'text-stone-700 hover:bg-stone-100'
+            }`}
+          >
+            <UserCog className="w-3.5 h-3.5" />
+            <span>Configurações da Conta</span>
+          </button>
         </div>
       </div>
 
       {/* Stories Carousel Bar */}
-      {activePill !== 'ranking' && activePill !== 'feedback' && (
+      {activePill !== 'ranking' && activePill !== 'feedback' && activePill !== 'conta' && (
         <StoriesBar
           stories={stories}
           currentUser={currentUser}
@@ -439,7 +481,12 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
                 >
                   <div>
                     <div className="h-36 bg-stone-200 relative overflow-hidden">
-                      <img src={producer.coverImage} alt={producer.farmName} className="w-full h-full object-cover" />
+                      <CoverDisplay
+                        src={producer.coverImage}
+                        bgColor={producer.coverBgColor}
+                        alt={producer.farmName}
+                        className="w-full h-full object-cover"
+                      />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent" />
 
                       <div className="absolute top-3 right-3 flex items-center gap-2">
@@ -458,10 +505,12 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
                       </div>
 
                       <div className="absolute bottom-3 left-4 flex items-center gap-3 text-white">
-                        <img
+                        <AvatarDisplay
                           src={producer.avatar}
-                          alt={producer.name}
-                          className="w-12 h-12 rounded-2xl object-cover border-2 border-white shadow-sm"
+                          bgColor={producer.avatarBgColor}
+                          name={producer.name || producer.farmName}
+                          className="w-12 h-12 rounded-2xl border-2 border-white shadow-sm shrink-0"
+                          textClassName="text-base"
                         />
                         <div>
                           <h4 className="font-bold text-base font-serif leading-tight">{producer.farmName}</h4>
@@ -573,19 +622,14 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
       {activePill === 'profile' && (
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-stone-200 space-y-6 shadow-2xs max-w-2xl mx-auto">
           <div className="flex items-center gap-4 pb-4 border-b border-stone-100">
-            {currentUser.avatar ? (
-              <img
-                src={currentUser.avatar}
-                alt={currentUser.name}
-                referrerPolicy="no-referrer"
-                className="w-14 h-14 rounded-2xl object-cover border border-stone-200 shadow-xs"
-              />
-            ) : (
-              <div className="w-14 h-14 rounded-2xl bg-[#4E553D] text-white flex items-center justify-center text-xl font-bold font-serif">
-                {currentUser.name.charAt(0)}
-              </div>
-            )}
-            <div>
+            <AvatarDisplay
+              src={currentUser.avatar}
+              bgColor={currentUser.avatarBgColor || '#4E553D'}
+              name={currentUser.name}
+              className="w-16 h-16 rounded-2xl border border-stone-200 shadow-xs shrink-0"
+              textClassName="text-xl"
+            />
+            <div className="flex-1 min-w-0">
               <h3 className="text-lg font-bold font-serif text-stone-900">{currentUser.name}</h3>
               <p className="text-xs text-stone-500">{currentUser.email}</p>
               <div className="flex items-center gap-2 mt-1">
@@ -595,6 +639,55 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
                 <span className="text-[11px] text-stone-500">Queimados, RJ</span>
               </div>
             </div>
+          </div>
+
+          {/* Foto de perfil ou Cor de fundo */}
+          <div className="space-y-3">
+            <input
+              type="file"
+              ref={profileAvatarInputRef}
+              accept="image/*"
+              onChange={handleConsumerAvatarUpload}
+              className="hidden"
+            />
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => profileAvatarInputRef.current?.click()}
+                className="px-3.5 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Carregar Foto do Aparelho</span>
+              </button>
+              {currentUser.avatar && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updatedUser: AppUser = { ...currentUser, avatar: '' };
+                    StorageService.saveUser(updatedUser);
+                    StorageService.setCurrentUser(updatedUser);
+                    onUserUpdated?.(updatedUser);
+                  }}
+                  className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Remover Foto</span>
+                </button>
+              )}
+            </div>
+
+            {!currentUser.avatar && (
+              <ColorPalettePicker
+                label="Cor de Fundo do Perfil (sem foto)"
+                selectedColor={currentUser.avatarBgColor || '#4E553D'}
+                onChange={(color) => {
+                  const updatedUser: AppUser = { ...currentUser, avatar: '', avatarBgColor: color };
+                  StorageService.saveUser(updatedUser);
+                  StorageService.setCurrentUser(updatedUser);
+                  onUserUpdated?.(updatedUser);
+                }}
+              />
+            )}
           </div>
 
           <div className="space-y-3 text-xs">
@@ -614,16 +707,33 @@ export const ConsumerView: React.FC<ConsumerViewProps> = ({
             </div>
           </div>
 
-          <div className="pt-2">
+          <div className="pt-2 flex flex-col sm:flex-row gap-2">
             <button
               type="button"
               onClick={onOpenAddressModal}
-              className="w-full py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              className="flex-1 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl transition-colors cursor-pointer"
             >
               Alterar Localização de Referência
             </button>
+            <button
+              type="button"
+              onClick={() => setActivePill('conta')}
+              className="flex-1 py-2.5 bg-[#4E553D] hover:bg-[#3E452E] text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+            >
+              Editar E-mail, Telefone ou Senha
+            </button>
           </div>
         </div>
+      )}
+
+      {/* VIEW: CONFIGURAÇÕES DA CONTA */}
+      {activePill === 'conta' && (
+        <AccountSettingsTab
+          currentUser={currentUser}
+          accentColor="olive"
+          onUserUpdated={(updated) => onUserUpdated?.(updated)}
+          onAccountDeleted={() => onAccountDeleted?.()}
+        />
       )}
 
       {/* Story Viewer Modal */}

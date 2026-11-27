@@ -12,8 +12,8 @@ import {
   SellerReport,
   AppFeedback,
 } from './types';
-import { StorageService, UserAddressConfig } from './services/storage';
-import { authService, appFeedbacksService } from './services/supabaseClient';
+import { StorageService, UserAddressConfig, reconcileProducersWithUsers } from './services/storage';
+import { authService, appFeedbacksService, producersService, productsService } from './services/supabaseClient';
 
 // Screens & Layout
 import { LandingPage } from './components/LandingPage';
@@ -45,6 +45,7 @@ export default function App() {
   // Authentication & Role State (strictly bound to currentUser; cannot switch without logging out)
   const [currentUser, setCurrentUser] = useState<AppUser | null>(() => StorageService.getCurrentUser());
   const [isDiagnosticModalOpen, setIsDiagnosticModalOpen] = useState(false);
+  const [welcomeNotice, setWelcomeNotice] = useState<string>('');
   const currentRoleOption: ActiveRoleOption = getRoleOptionForUser(currentUser);
 
   // Persistence State
@@ -129,6 +130,23 @@ export default function App() {
     };
   }, []);
 
+  // Load shared sellers & catalog globally so every visitor sees all registered sellers
+  useEffect(() => {
+    producersService
+      .getAll()
+      .then((syncedProducers) => {
+        setProducers(reconcileProducersWithUsers(syncedProducers, StorageService.getUsers()));
+      })
+      .catch(() => {});
+
+    productsService
+      .getAll()
+      .then((syncedProducts) => {
+        setProducts(syncedProducts);
+      })
+      .catch(() => {});
+  }, []);
+
   // Load app feedbacks from Supabase when signed in as admin
   useEffect(() => {
     if (currentUser?.role === 'admin') {
@@ -140,10 +158,15 @@ export default function App() {
   }, [currentUser?.role]);
 
   // Login handler
-  const handleLogin = (param1: ActiveRoleOption | AppUser, param2?: AppUser | ActiveRoleOption) => {
+  const handleLogin = (param1: ActiveRoleOption | AppUser, param2?: AppUser | ActiveRoleOption, notice?: string) => {
     const user = (typeof param1 === 'string' ? param2 : param1) as AppUser;
     setCurrentUser(user);
     StorageService.setCurrentUser(user);
+    if (notice) {
+      setWelcomeNotice(notice);
+    } else {
+      setWelcomeNotice('');
+    }
     setActiveScreen('dashboard');
   };
 
@@ -177,12 +200,20 @@ export default function App() {
 
   // Product save/delete (Seller/Admin)
   const handleSaveProduct = (prod: Product) => {
-    StorageService.saveProduct(prod);
+    const exists = products.some((p) => p.id === prod.id);
+    if (exists) {
+      StorageService.saveProduct(prod);
+      productsService.update(prod.id, prod).catch(() => {});
+    } else {
+      StorageService.saveProduct(prod);
+      productsService.create(prod).catch(() => {});
+    }
     setProducts(StorageService.getProducts());
   };
 
   const handleDeleteProduct = (productId: string) => {
     StorageService.deleteProduct(productId);
+    productsService.delete(productId).catch(() => {});
     setProducts(StorageService.getProducts());
   };
 
@@ -193,7 +224,7 @@ export default function App() {
 
   // Seller save
   const handleSaveProducer = (prod: Producer) => {
-    StorageService.saveProducer(prod);
+    producersService.upsert(prod, currentUser?.id).catch(() => {});
     setProducers(StorageService.getProducers());
   };
 
@@ -207,6 +238,23 @@ export default function App() {
   const handleSaveUser = (u: AppUser) => {
     StorageService.saveUser(u);
     setUsers(StorageService.getUsers());
+  };
+
+  // Current user account update (email, phone, password)
+  const handleUpdateCurrentUser = (updatedUser: AppUser) => {
+    setCurrentUser(updatedUser);
+    StorageService.setCurrentUser(updatedUser);
+    setUsers(StorageService.getUsers());
+    setProducers(StorageService.getProducers());
+    setProducts(StorageService.getProducts());
+  };
+
+  // Current user account deleted
+  const handleAccountDeleted = () => {
+    setUsers(StorageService.getUsers());
+    setProducers(StorageService.getProducers());
+    setProducts(StorageService.getProducts());
+    handleLogout();
   };
 
   // Report status update (Admin)
@@ -374,9 +422,11 @@ export default function App() {
           farmName: currentUser.farmName || `Loja de ${currentUser.name}`,
           tagline: `Produtos e serviços locais em ${currentUser.neighborhood || 'Queimados'}`,
           bio: `Empreendedor(a) local em ${currentUser.neighborhood || 'Queimados'}.`,
-          story: 'Edite os dados da sua loja na aba "Editar Perfil & Loja".',
-          avatar: currentUser.avatar || 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=400&q=80',
-          coverImage: 'https://images.unsplash.com/photo-1488459716781-31db52582fe9?auto=format&fit=crop&w=1200&q=80',
+          story: 'Edite os dados da sua loja na aba "Editar Perfil".',
+          avatar: currentUser.avatar || '',
+          avatarBgColor: currentUser.avatarBgColor || '#4E553D',
+          coverImage: '',
+          coverBgColor: currentUser.coverBgColor || '#1F6B38',
           galleryImages: [],
           location: {
             city: currentUser.city || 'Queimados',
@@ -418,6 +468,18 @@ export default function App() {
 
       {/* 3. Main Dynamic Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        {welcomeNotice && (
+          <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-3 text-xs sm:text-sm text-emerald-900 shadow-2xs">
+            <span className="font-semibold">{welcomeNotice}</span>
+            <button
+              type="button"
+              onClick={() => setWelcomeNotice('')}
+              className="px-2.5 py-1 rounded-lg hover:bg-emerald-100 text-emerald-800 font-bold text-xs cursor-pointer shrink-0"
+            >
+              Fechar
+            </button>
+          </div>
+        )}
         {/* VIEW A: CONSUMER VIEW */}
         {currentRoleOption === 'consumer' && (
           <ConsumerView
@@ -433,6 +495,8 @@ export default function App() {
             onOpenProductDetail={setSelectedProductDetail}
             onOpenProducerProfile={(prod) => setSelectedProfileProducer(prod)}
             onReportProducer={(prod) => setReportingProducer(prod)}
+            onUserUpdated={handleUpdateCurrentUser}
+            onAccountDeleted={handleAccountDeleted}
           />
         )}
 
@@ -449,6 +513,8 @@ export default function App() {
             onUpdateOrderStatus={handleUpdateOrderStatus}
             onSendMessage={handleSendMessage}
             onSaveProducer={handleSaveProducer}
+            onUserUpdated={handleUpdateCurrentUser}
+            onAccountDeleted={handleAccountDeleted}
           />
         )}
 
@@ -469,6 +535,8 @@ export default function App() {
             onUpdateReportStatus={handleUpdateReportStatus}
             onUpdateAppFeedbackStatus={handleUpdateAppFeedbackStatus}
             onOpenDiagnostics={() => setIsDiagnosticModalOpen(true)}
+            onUserUpdated={handleUpdateCurrentUser}
+            onAccountDeleted={handleAccountDeleted}
           />
         )}
       </main>

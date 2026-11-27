@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import nodemailer from "nodemailer";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
@@ -25,90 +26,80 @@ interface DbSchema {
 }
 
 const DEFAULT_DB: DbSchema = {
-  producers: [
-    {
-      id: "prod_vivian",
-      name: "Vivian dos Santos Nogueira",
-      farmName: "Sítio Agroecológico da Vivian",
-      tagline: "Agricultura familiar e produtos artesanais de Queimados",
-      bio: "Empreendedora local dedicada ao fortalecimento do comércio justo e produção de qualidade em Queimados.",
-      story: "Com dedicação e respeito à nossa comunidade em Queimados, oferecemos produtos feitos com carinho, transparência e contato direto com os clientes.",
-      avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80",
-      coverImage: "https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=1200&q=80",
-      galleryImages: [
-        "https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=800&q=80",
-        "https://images.unsplash.com/photo-1595974482597-4b8da8879bc5?auto=format&fit=crop&w=800&q=80",
-        "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80"
-      ],
-      location: {
-        city: "Queimados",
-        state: "RJ",
-        neighborhood: "Zona Rural",
-        address: "Estrada do Sol, 450",
-        distanceKm: 0,
-        lat: -22.7144,
-        lng: -43.5558,
-      },
-      rating: 5.0,
-      reviewCount: 1,
-      certifications: ["familiar", "selo_verde"],
-      phone: "(21) 98765-4321",
-      whatsapp: "5521987654321",
-      establishedYear: 2017,
-      harvestDays: ["Segunda", "Quarta", "Sexta", "Sábado"],
-      deliveryMethods: ["Retirada no Local", "Entrega em Domicílio em Queimados"],
-      hectares: 3.5,
-      specialty: "Produtos Agrícolas e Artesanais",
-      viewsCount: 12,
-      category: "produtos_agricolas"
-    },
-    {
-      id: "prod_leo",
-      name: "Leonardo Souza",
-      farmName: "Comércio & Quitutes do Leo",
-      tagline: "Gastronomia local, receitas tradicionais e produtos de Queimados",
-      bio: "Empreendedor do bairro Vila Tinguá / Lazareto trazendo produtos selecionados da nossa região.",
-      story: "Atuando no comércio local de Queimados há anos, valorizando pequenos produtores e atendendo as famílias com dedicação.",
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80",
-      coverImage: "https://images.unsplash.com/photo-1527153857715-3908f2bae5e8?auto=format&fit=crop&w=1200&q=80",
-      galleryImages: [
-        "https://images.unsplash.com/photo-1527153857715-3908f2bae5e8?auto=format&fit=crop&w=800&q=80",
-        "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80",
-        "https://images.unsplash.com/photo-1556911220-e15b29be8c8f?auto=format&fit=crop&w=800&q=80"
-      ],
-      location: {
-        city: "Queimados",
-        state: "RJ",
-        neighborhood: "Vila Tinguá / Lazareto",
-        address: "Estrada do Lazareto, 120",
-        distanceKm: 3.2,
-        lat: -22.7092,
-        lng: -43.5412,
-      },
-      rating: 4.9,
-      reviewCount: 3,
-      certifications: ["artesanal", "familiar", "selo_verde"],
-      phone: "(21) 97654-3210",
-      whatsapp: "5521976543210",
-      establishedYear: 2012,
-      harvestDays: ["Terça", "Quinta", "Sábado"],
-      deliveryMethods: ["Entrega em Domicílio", "Retirada no Estabelecimento"],
-      hectares: 8,
-      specialty: "Gastronomia e Alimentos Artesanais",
-      viewsCount: 8,
-      category: "gastronomia"
-    }
-  ],
+  producers: [],
   products: [],
   orders: [],
-  users: []
+  users: [],
+  reviews: [],
+  stories: [],
 };
+
+const FAKE_PRODUCER_IDS = new Set(["prod_vivian", "prod_leo"]);
+const FAKE_USER_IDS = new Set(["usr_vivian", "usr_leo", "usr_julia"]);
+const FAKE_REVIEW_IDS = new Set(["rev_1", "rev_2"]);
+const FAKE_STORY_IDS = new Set(["story_vivian_1", "story_leo_1"]);
+
+function buildProducerFromServerUser(user: any) {
+  const producerId = user.producerId || user.farmId || `prod_${user.id}`;
+  const cleanPhone = user.phone || "";
+  const numericPhone = String(cleanPhone).replace(/\D/g, "");
+  return {
+    id: producerId,
+    name: user.name || "Vendedor ConeQta",
+    farmName: user.farmName || `Loja de ${user.name || "Vendedor"}`,
+    tagline: `Produtos e serviços locais em ${user.neighborhood || "Queimados"}`,
+    bio: `Empreendedor(a) local de ${user.neighborhood || "Queimados"}, RJ.`,
+    story: "Bem-vindo ao meu espaço no ConeQta Queimados!",
+    avatar: user.avatar || "",
+    avatarBgColor: user.avatarBgColor || "#4E553D",
+    coverImage: "",
+    coverBgColor: user.coverBgColor || "#1F6B38",
+    galleryImages: [],
+    location: {
+      city: user.city || "Queimados",
+      state: "RJ",
+      neighborhood: user.neighborhood || "Queimados",
+      address: `${user.neighborhood || "Queimados"}, Queimados - RJ`,
+      distanceKm: 1.0,
+    },
+    rating: 0,
+    reviewCount: 0,
+    certifications: [],
+    phone: cleanPhone,
+    whatsapp: numericPhone
+      ? numericPhone.startsWith("55")
+        ? numericPhone
+        : `55${numericPhone}`
+      : "",
+    establishedYear: new Date().getFullYear(),
+    harvestDays: ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"],
+    deliveryMethods: ["Retirada no Local"],
+    specialty: "Comércio Local",
+    viewsCount: 0,
+    category: "outros",
+  };
+}
 
 function readDb(): DbSchema {
   try {
     if (fs.existsSync(DB_FILE)) {
       const data = fs.readFileSync(DB_FILE, "utf-8");
-      return JSON.parse(data);
+      const parsed: DbSchema = JSON.parse(data);
+      const producers = (parsed.producers || []).filter((p: any) => !FAKE_PRODUCER_IDS.has(p.id));
+      const users = (parsed.users || []).filter((u: any) => !FAKE_USER_IDS.has(u.id));
+      const reviews = (parsed.reviews || []).filter(
+        (r: any) => !FAKE_REVIEW_IDS.has(r.id) && !FAKE_PRODUCER_IDS.has(r.producerId)
+      );
+      const stories = (parsed.stories || []).filter(
+        (s: any) => !FAKE_STORY_IDS.has(s.id) && !FAKE_PRODUCER_IDS.has(s.producerId)
+      );
+      return {
+        ...parsed,
+        producers,
+        users,
+        reviews,
+        stories,
+      };
     }
   } catch (err) {
     console.error("Erro ao ler db.json:", err);
@@ -128,7 +119,29 @@ function writeDb(db: DbSchema) {
 // Database API Endpoints for Entrepreneurs (Producers)
 app.get("/api/producers", (_req, res) => {
   const db = readDb();
-  res.json(db.producers || []);
+  const producers = [...(db.producers || [])];
+  let changed = false;
+
+  // Ensure every user registered with role === 'producer' is visible in producers
+  for (const u of db.users || []) {
+    if (u.role === "producer") {
+      const targetId = u.producerId || u.farmId || `prod_${u.id}`;
+      const exists = producers.some(
+        (p: any) => p.id === targetId || p.id === u.id || (p.name && u.name && p.name === u.name && p.phone === u.phone)
+      );
+      if (!exists) {
+        producers.unshift(buildProducerFromServerUser(u));
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    db.producers = producers;
+    writeDb(db);
+  }
+
+  res.json(producers);
 });
 
 app.get("/api/producers/:id", (req, res) => {
@@ -142,16 +155,211 @@ app.get("/api/producers/:id", (req, res) => {
 
 app.put("/api/producers/:id", (req, res) => {
   const db = readDb();
-  const index = db.producers?.findIndex((p) => p.id === req.params.id);
+  db.producers = db.producers || [];
+  const index = db.producers.findIndex((p) => p.id === req.params.id);
   const updatedProducer = { ...req.body, id: req.params.id };
 
   if (index >= 0) {
     db.producers[index] = { ...db.producers[index], ...updatedProducer };
   } else {
-    db.producers.push(updatedProducer);
+    db.producers.unshift(updatedProducer);
   }
   writeDb(db);
   res.json({ success: true, producer: updatedProducer });
+});
+
+app.delete("/api/producers/:id", (req, res) => {
+  const db = readDb();
+  const targetId = req.params.id;
+  db.producers = (db.producers || []).filter((p: any) => p.id !== targetId);
+  db.products = (db.products || []).filter((p: any) => p.producerId !== targetId);
+  db.stories = (db.stories || []).filter((s: any) => s.producerId !== targetId);
+  db.reviews = (db.reviews || []).filter((r: any) => r.producerId !== targetId);
+  writeDb(db);
+  res.json({ success: true });
+});
+
+// Database API Endpoints for Registered Users (safe fields only on GET)
+app.get("/api/users", (_req, res) => {
+  const db = readDb();
+  const safeUsers = (db.users || []).map(({ password: _pw, ...rest }) => rest);
+  res.json(safeUsers);
+});
+
+app.post("/api/users", (req, res) => {
+  const db = readDb();
+  db.users = db.users || [];
+  const incoming = req.body;
+  if (!incoming || !incoming.id) {
+    return res.status(400).json({ error: "Dados de usuário inválidos" });
+  }
+  const { password: _pw, ...safeUser } = incoming;
+  const idx = db.users.findIndex((u: any) => u.id === incoming.id || (u.email && incoming.email && u.email.toLowerCase() === incoming.email.toLowerCase()));
+  if (idx >= 0) {
+    db.users[idx] = { ...db.users[idx], ...safeUser };
+  } else {
+    db.users.unshift(safeUser);
+  }
+
+  // Automatically create seller entry if role === 'producer'
+  if (safeUser.role === "producer") {
+    db.producers = db.producers || [];
+    const targetId = safeUser.producerId || safeUser.farmId || `prod_${safeUser.id}`;
+    if (!db.producers.some((p: any) => p.id === targetId)) {
+      db.producers.unshift(buildProducerFromServerUser(safeUser));
+    }
+  }
+
+  writeDb(db);
+  res.json({ success: true, user: safeUser });
+});
+
+app.delete("/api/users/:id", (req, res) => {
+  const db = readDb();
+  const userId = req.params.id;
+  const targetUser = (db.users || []).find((u: any) => u.id === userId);
+  db.users = (db.users || []).filter((u: any) => u.id !== userId);
+
+  if (targetUser && targetUser.role === "producer") {
+    const prodIds = new Set<string>([
+      targetUser.producerId || targetUser.farmId || `prod_${targetUser.id}`,
+      targetUser.id,
+    ]);
+    db.producers = (db.producers || []).filter((p: any) => !prodIds.has(p.id));
+    db.products = (db.products || []).filter((p: any) => !prodIds.has(p.producerId));
+    db.stories = (db.stories || []).filter((s: any) => !prodIds.has(s.producerId));
+    db.reviews = (db.reviews || []).filter((r: any) => !prodIds.has(r.producerId));
+  }
+
+  writeDb(db);
+  res.json({ success: true });
+});
+
+// Welcome & Registration Confirmation Email Endpoint
+app.post("/api/auth/welcome-email", async (req, res) => {
+  const { name, email, role, neighborhood } = req.body || {};
+  if (!email || !name) {
+    return res.status(400).json({ success: false, sent: false, error: "Nome e e-mail são obrigatórios." });
+  }
+
+  const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+  const roleLabel = role === "producer" ? "Vendedor / Comércio Local" : "Consumidor";
+  const subject = "Bem-vindo(a) ao ConeQta! Seu cadastro foi realizado com sucesso";
+  const textBody = [
+    `Olá, ${name}!`,
+    "",
+    "Seja muito bem-vindo(a) ao ConeQta — conectando empreendedores de Queimados à população.",
+    "Este e-mail confirma que o seu cadastro foi realizado com sucesso!",
+    "",
+    `• Perfil: ${roleLabel}`,
+    `• Bairro: ${neighborhood || "Queimados, RJ"}`,
+    `• E-mail cadastrado: ${email}`,
+    "",
+    `Acesse a plataforma quando quiser em: ${appUrl}`,
+    "",
+    "Equipe ConeQta • Queimados, RJ",
+  ].join("\n");
+
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f7f6f2; padding: 24px; border-radius: 16px;">
+      <div style="background: #1F6B38; color: #ffffff; padding: 24px; border-radius: 12px 12px 0 0;">
+        <h1 style="margin: 0; font-size: 24px; letter-spacing: 1px;">CONEQTA</h1>
+        <p style="margin: 6px 0 0; font-size: 13px; color: #d9f99d;">Queimados, RJ • Comércio Local e Agricultura Familiar</p>
+      </div>
+      <div style="background: #ffffff; padding: 28px; border-radius: 0 0 12px 12px; color: #292524;">
+        <h2 style="margin-top: 0; color: #1F6B38;">Bem-vindo(a), ${name}!</h2>
+        <p style="font-size: 15px; line-height: 1.6;">
+          Seu cadastro no aplicativo <strong>ConeQta</strong> foi realizado e confirmado com sucesso.
+        </p>
+        <div style="background: #faf9f6; border: 1px solid #e7e5e4; border-radius: 10px; padding: 16px; margin: 20px 0; font-size: 14px;">
+          <p style="margin: 4px 0;"><strong>Tipo de conta:</strong> ${roleLabel}</p>
+          <p style="margin: 4px 0;"><strong>Bairro:</strong> ${neighborhood || "Queimados, RJ"}</p>
+          <p style="margin: 4px 0;"><strong>E-mail:</strong> ${email}</p>
+        </div>
+        ${
+          role === "producer"
+            ? `<p style="font-size: 14px; line-height: 1.6;">Seu perfil de vendedor já está ativo e visível na lista de <strong>Vendedores &amp; Lojas</strong> para todos os visitantes do ConeQta. Acesse seu painel para adicionar produtos, serviços e fotos da sua loja.</p>`
+            : `<p style="font-size: 14px; line-height: 1.6;">Agora você já pode explorar o catálogo local, descobrir lojas de Queimados, avaliar produtos e acompanhar os rankings.</p>`
+        }
+        <p style="margin-top: 24px;">
+          <a href="${appUrl}" style="display: inline-block; background: #1F6B38; color: #ffffff; text-decoration: none; font-weight: bold; padding: 12px 24px; border-radius: 8px; font-size: 14px;">
+            Acessar o ConeQta
+          </a>
+        </p>
+        <hr style="border: none; border-top: 1px solid #e7e5e4; margin: 24px 0;" />
+        <p style="font-size: 12px; color: #78716c; margin: 0;">ConeQta • Conectando empreendedores de Queimados à população</p>
+      </div>
+    </div>
+  `;
+
+  const fromAddress = process.env.EMAIL_FROM || "ConeQta <no-reply@coneqta.app>";
+
+  // Option 1: Resend API
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const resendResp = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: fromAddress,
+          to: [email],
+          subject,
+          html: htmlBody,
+          text: textBody,
+        }),
+      });
+      if (resendResp.ok) {
+        return res.json({ success: true, sent: true, provider: "resend" });
+      }
+      const errText = await resendResp.text();
+      console.error("Resend error:", errText);
+    } catch (err) {
+      console.error("Resend request failed:", err);
+    }
+  }
+
+  // Option 2: Nodemailer SMTP
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    try {
+      const port = Number(process.env.SMTP_PORT || 587);
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port,
+        secure: port === 465,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS,
+        },
+      });
+
+      await transporter.sendMail({
+        from: fromAddress,
+        to: email,
+        subject,
+        text: textBody,
+        html: htmlBody,
+      });
+
+      return res.json({ success: true, sent: true, provider: "smtp" });
+    } catch (err: any) {
+      console.error("Erro ao enviar e-mail via SMTP:", err);
+      return res.status(500).json({
+        success: false,
+        sent: false,
+        provider: "smtp",
+        error: err?.message || "Falha ao enviar e-mail via SMTP",
+      });
+    }
+  }
+
+  return res.json({
+    success: true,
+    sent: false,
+    reason: "EMAIL_PROVIDER_NOT_CONFIGURED",
+  });
 });
 
 // Database API Endpoints for Products

@@ -20,6 +20,7 @@ import {
   ExternalLink as ExternalLinkIcon
 } from 'lucide-react';
 import { Product, Producer } from '../types';
+import { AvatarDisplay, CoverDisplay } from './ProfileMedia';
 
 interface SearchDirectoryViewProps {
   products: Product[];
@@ -291,7 +292,7 @@ export const SearchDirectoryView: React.FC<SearchDirectoryViewProps> = ({
         </div>
 
         {/* SECTION 1: MERCHANTS / PRODUCERS */}
-        {(activeTab === 'all' || activeTab === 'merchants') && filteredProducers.length > 0 && (
+        {(activeTab === 'merchants' || (activeTab === 'all' && filteredProducers.length > 0)) && (
           <section className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -303,6 +304,15 @@ export const SearchDirectoryView: React.FC<SearchDirectoryViewProps> = ({
               <span className="text-xs text-stone-500 font-medium">{filteredProducers.length} encontrado(s)</span>
             </div>
 
+            {filteredProducers.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center border border-stone-200">
+                <Store className="w-10 h-10 text-stone-300 mx-auto mb-2" />
+                <h3 className="font-bold text-stone-700 text-base">Nenhum vendedor ou loja encontrado</h3>
+                <p className="text-xs text-stone-500 mt-1 max-w-sm mx-auto">
+                  Todos os usuários cadastrados como vendedores aparecem automaticamente aqui.
+                </p>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredProducers.map((producer) => (
                 <div 
@@ -313,19 +323,22 @@ export const SearchDirectoryView: React.FC<SearchDirectoryViewProps> = ({
                   <div>
                     {/* Producer Cover Banner */}
                     <div className="h-32 bg-stone-200 relative overflow-hidden">
-                      <img 
-                        src={producer.coverImage || 'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=800&q=80'} 
-                        alt={producer.name}
+                      <CoverDisplay
+                        src={producer.coverImage}
+                        bgColor={producer.coverBgColor}
+                        alt={producer.farmName || producer.name}
                         className="w-full h-full object-cover"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                       
                       {/* Avatar */}
                       <div className="absolute bottom-3 left-3 flex items-center gap-2.5">
-                        <img 
-                          src={producer.avatar || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80'} 
-                          alt={producer.name} 
-                          className="w-11 h-11 rounded-full border-2 border-white object-cover shadow-sm bg-white"
+                        <AvatarDisplay
+                          src={producer.avatar}
+                          bgColor={producer.avatarBgColor}
+                          name={producer.name || producer.farmName}
+                          className="w-11 h-11 rounded-full border-2 border-white shadow-sm shrink-0"
+                          textClassName="text-sm"
                         />
                         <div className="text-white">
                           <h3 className="font-bold text-sm leading-tight drop-shadow-xs">{producer.farmName || producer.name}</h3>
@@ -405,6 +418,7 @@ export const SearchDirectoryView: React.FC<SearchDirectoryViewProps> = ({
                 </div>
               ))}
             </div>
+            )}
           </section>
         )}
 

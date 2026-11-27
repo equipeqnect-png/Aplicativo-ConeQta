@@ -1,6 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Producer, Product, Order, ReviewItem, ProducerStory, StoryComment, ChatMessage, AppUser, SealItem, CategoryDef, AppFeedback } from '../types';
-import { StorageService } from './storage';
+import { StorageService, buildProducerFromUser, reconcileProducersWithUsers } from './storage';
 
 // Obtém as variáveis de ambiente Vite (ou vazias se ainda não configuradas pelo usuário)
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
@@ -37,18 +37,23 @@ export const authService = {
         verified: true,
         createdAt: new Date().toISOString(),
         producerId: userData.producerId,
-        avatar: userData.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'
+        farmId: userData.farmId,
+        farmName: userData.farmName,
+        avatar: userData.avatar || '',
+        avatarBgColor: userData.avatarBgColor || '#4E553D',
       };
       StorageService.saveUser(newUser);
       StorageService.setCurrentUser(newUser);
-      return { user: newUser, error: null };
+      return { user: newUser, error: null, emailSent: false };
     }
 
     try {
+      const emailRedirectTo = typeof window !== 'undefined' ? window.location.origin : undefined;
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
+          emailRedirectTo,
           data: {
             name: userData.name,
             role: userData.role || 'consumer',
@@ -60,21 +65,20 @@ export const authService = {
         }
       });
 
-      if (error) return { user: null, error: error.message };
+      if (error) return { user: null, error: error.message, emailSent: false };
 
       if (data.user) {
-        // Garantir inserção do perfil no banco
         const { data: profile } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', data.user.id)
           .single();
 
-        return { user: profile || data.user, error: null };
+        return { user: profile || data.user, error: null, emailSent: true };
       }
-      return { user: null, error: 'Erro inesperado no cadastro' };
+      return { user: null, error: 'Erro inesperado no cadastro', emailSent: false };
     } catch (err: any) {
-      return { user: null, error: err.message || 'Erro de conexão' };
+      return { user: null, error: err.message || 'Erro de conexão', emailSent: false };
     }
   },
 
@@ -142,6 +146,106 @@ export const authService = {
     } catch {
       return StorageService.getCurrentUser();
     }
+  },
+
+  async updateUserCredentials(
+    user: AppUser,
+    updates: { email?: string; phone?: string; password?: string }
+  ): Promise<{ success: boolean; user: AppUser; error?: string; emailConfirmationPending?: boolean }> {
+    const nextEmail = updates.email !== undefined ? updates.email.trim().toLowerCase() : user.email;
+    const nextPhone = updates.phone !== undefined ? updates.phone.trim() : user.phone;
+    const nextPassword = updates.password ? updates.password : user.password;
+
+    const updatedUser: AppUser = {
+      ...user,
+      email: nextEmail,
+      phone: nextPhone,
+      password: nextPassword,
+    };
+
+    let emailConfirmationPending = false;
+
+    if (supabase) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const authPayload: { email?: string; password?: string; data?: Record<string, any> } = {};
+          if (updates.email && nextEmail !== (user.email || '').toLowerCase()) {
+            authPayload.email = nextEmail;
+            emailConfirmationPending = true;
+          }
+          if (updates.password) {
+            authPayload.password = updates.password;
+          }
+          if (updates.phone !== undefined) {
+            authPayload.data = { phone: nextPhone };
+          }
+
+          if (authPayload.email || authPayload.password || authPayload.data) {
+            const { error: authError } = await supabase.auth.updateUser(authPayload);
+            if (authError) {
+              return { success: false, user, error: authError.message };
+            }
+          }
+
+          await supabase
+            .from('profiles')
+            .update({
+              email: nextEmail,
+              phone: nextPhone,
+            })
+            .eq('id', session.user.id);
+        }
+      } catch (err: any) {
+        return { success: false, user, error: err?.message || 'Erro ao atualizar dados da conta' };
+      }
+    }
+
+    // Persist locally and sync Express backend
+    StorageService.saveUser(updatedUser);
+    StorageService.setCurrentUser(updatedUser);
+
+    // Sync phone/whatsapp to Producer record if user is a seller
+    if (updatedUser.role === 'producer' && updates.phone !== undefined) {
+      const targetProducerId = updatedUser.producerId || updatedUser.farmId || `prod_${updatedUser.id}`;
+      const existingProducer = StorageService.getProducers().find(
+        (p) => p.id === targetProducerId || p.id === updatedUser.id
+      );
+      if (existingProducer) {
+        const numericPhone = nextPhone.replace(/\D/g, '');
+        const whatsapp = numericPhone
+          ? numericPhone.startsWith('55')
+            ? numericPhone
+            : `55${numericPhone}`
+          : '';
+        await producersService.update(existingProducer.id, {
+          phone: nextPhone,
+          whatsapp,
+        });
+      }
+    }
+
+    return { success: true, user: updatedUser, emailConfirmationPending };
+  },
+
+  async deleteUserAccount(user: AppUser): Promise<{ success: boolean }> {
+    StorageService.deleteUser(user.id);
+
+    if (supabase) {
+      try {
+        if (user.role === 'producer') {
+          const targetProducerId = user.producerId || user.farmId || `prod_${user.id}`;
+          await supabase.from('products').delete().eq('producer_id', targetProducerId);
+          await supabase.from('producers').delete().eq('id', targetProducerId);
+        }
+        await supabase.from('profiles').delete().eq('id', user.id);
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn('Supabase account cleanup warning:', err);
+      }
+    }
+
+    return { success: true };
   }
 };
 
@@ -150,80 +254,210 @@ export const authService = {
 // ==============================================================================
 export const producersService = {
   async getAll(): Promise<Producer[]> {
+    const fakeIds = new Set(['prod_vivian', 'prod_leo']);
+    const localProducers = StorageService.getProducers();
+    const localUsers = StorageService.getUsers();
+    let merged: Producer[] = [...localProducers];
+    let remoteUsers: AppUser[] = [...localUsers];
+
+    // Always try Express backend API as shared fallback
+    try {
+      const [prodResp, userResp] = await Promise.all([
+        fetch('/api/producers').catch(() => null),
+        fetch('/api/users').catch(() => null),
+      ]);
+      if (prodResp && prodResp.ok) {
+        const apiProducers = await prodResp.json();
+        if (Array.isArray(apiProducers)) {
+          const map = new Map<string, Producer>();
+          for (const p of merged) map.set(p.id, p);
+          for (const p of apiProducers) {
+            if (p?.id && !fakeIds.has(p.id)) map.set(p.id, p);
+          }
+          merged = Array.from(map.values());
+        }
+      }
+      if (userResp && userResp.ok) {
+        const apiUsers = await userResp.json();
+        if (Array.isArray(apiUsers)) {
+          const uMap = new Map<string, AppUser>();
+          for (const u of remoteUsers) uMap.set(u.id, u);
+          for (const u of apiUsers) {
+            if (u?.id) uMap.set(u.id, u);
+          }
+          remoteUsers = Array.from(uMap.values());
+        }
+      }
+    } catch {
+      // ignore if backend API unavailable (e.g., static deploy)
+    }
+
+    if (supabase) {
+      try {
+        const [{ data: supaProducers }, { data: supaProfiles }] = await Promise.all([
+          supabase.from('producers').select('*').order('name'),
+          supabase.from('profiles').select('*').eq('role', 'producer'),
+        ]);
+
+        const map = new Map<string, Producer>();
+        for (const p of merged) {
+          if (p?.id && !fakeIds.has(p.id)) map.set(p.id, p);
+        }
+
+        if (Array.isArray(supaProducers)) {
+          for (const item of supaProducers) {
+            if (!item?.id || fakeIds.has(item.id)) continue;
+            map.set(item.id, {
+              id: item.id,
+              name: item.name,
+              farmName: item.farm_name,
+              tagline: item.tagline || '',
+              bio: item.bio || '',
+              story: item.story || '',
+              avatar: item.avatar || '',
+              avatarBgColor: item.avatar_bg_color || '#4E553D',
+              coverImage: item.cover_image || '',
+              coverBgColor: item.cover_bg_color || '#1F6B38',
+              galleryImages: item.gallery_images || [],
+              location: {
+                city: item.city || 'Queimados',
+                state: item.state || 'RJ',
+                neighborhood: item.neighborhood || '',
+                address: item.address || '',
+                distanceKm: Number(item.distance_km || 0),
+                lat: item.lat,
+                lng: item.lng,
+              },
+              rating: Number(item.rating || 0),
+              reviewCount: Number(item.review_count || 0),
+              certifications: item.certifications || [],
+              phone: item.phone || '',
+              whatsapp: item.whatsapp || '',
+              establishedYear: item.established_year || new Date().getFullYear(),
+              harvestDays: item.harvest_days || [],
+              deliveryMethods: item.delivery_methods || [],
+              hectares: item.hectares ? Number(item.hectares) : undefined,
+              specialty: item.specialty || '',
+              viewsCount: item.views_count || 0,
+              category: item.category,
+            });
+          }
+        }
+
+        if (Array.isArray(supaProfiles)) {
+          for (const prof of supaProfiles) {
+            if (!prof?.id) continue;
+            const existsForProfile = Array.from(map.values()).some(
+              (p) =>
+                p.id === prof.id ||
+                p.id === `prod_${prof.id}` ||
+                (p.name === prof.name && prof.phone && p.phone === prof.phone)
+            );
+            if (!existsForProfile) {
+              const synthesized = buildProducerFromUser({
+                id: prof.id,
+                name: prof.name || prof.email?.split('@')[0] || 'Vendedor',
+                email: prof.email || '',
+                role: 'producer',
+                phone: prof.phone || '',
+                city: prof.city || 'Queimados',
+                neighborhood: prof.neighborhood || 'Queimados',
+                avatar: prof.avatar || '',
+                avatarBgColor: prof.avatar_bg_color || '#4E553D',
+                createdAt: prof.created_at || new Date().toISOString(),
+              });
+              map.set(synthesized.id, synthesized);
+            }
+          }
+        }
+
+        merged = Array.from(map.values());
+      } catch {
+        // fallback to merged local/API list
+      }
+    }
+
+    const finalProducers = reconcileProducersWithUsers(merged, remoteUsers);
+    StorageService.setProducers(finalProducers);
+    return finalProducers;
+  },
+
+  async upsert(producer: Producer, authUserId?: string): Promise<boolean> {
+    StorageService.saveProducer(producer);
+
     if (!supabase) {
-      return StorageService.getProducers();
+      return true;
     }
 
     try {
-      const { data, error } = await supabase
-        .from('producers')
-        .select('*')
-        .order('name');
-
-      if (error || !data || data.length === 0) {
-        return StorageService.getProducers();
+      const row: any = {
+        id: producer.id,
+        name: producer.name,
+        farm_name: producer.farmName,
+        tagline: producer.tagline || '',
+        bio: producer.bio || '',
+        story: producer.story || '',
+        avatar: producer.avatar || '',
+        cover_image: producer.coverImage || '',
+        gallery_images: producer.galleryImages || [],
+        city: producer.location?.city || 'Queimados',
+        state: producer.location?.state || 'RJ',
+        neighborhood: producer.location?.neighborhood || 'Queimados',
+        address: producer.location?.address || '',
+        distance_km: producer.location?.distanceKm ?? 1.0,
+        rating: producer.rating ?? 0,
+        review_count: producer.reviewCount ?? 0,
+        certifications: producer.certifications || [],
+        phone: producer.phone || '',
+        whatsapp: producer.whatsapp || '',
+        established_year: producer.establishedYear || new Date().getFullYear(),
+        harvest_days: producer.harvestDays || [],
+        delivery_methods: producer.deliveryMethods || [],
+        hectares: producer.hectares ?? null,
+        specialty: producer.specialty || '',
+        views_count: producer.viewsCount || 0,
+        category: producer.category || 'outros',
+      };
+      if (authUserId) {
+        row.user_id = authUserId;
       }
 
-      // Mapeamento dos campos snake_case para camelCase
-      return data.map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        farmName: item.farm_name,
-        tagline: item.tagline || '',
-        bio: item.bio || '',
-        story: item.story || '',
-        avatar: item.avatar || '',
-        coverImage: item.cover_image || '',
-        galleryImages: item.gallery_images || [],
-        location: {
-          city: item.city || 'Queimados',
-          state: item.state || 'RJ',
-          neighborhood: item.neighborhood || '',
-          address: item.address || '',
-          distanceKm: Number(item.distance_km || 0),
-          lat: item.lat,
-          lng: item.lng
-        },
-        rating: Number(item.rating || 5.0),
-        reviewCount: Number(item.review_count || 0),
-        certifications: item.certifications || [],
-        phone: item.phone || '',
-        whatsapp: item.whatsapp || '',
-        establishedYear: item.established_year || 2020,
-        harvestDays: item.harvest_days || [],
-        deliveryMethods: item.delivery_methods || [],
-        hectares: item.hectares ? Number(item.hectares) : undefined,
-        specialty: item.specialty || '',
-        viewsCount: item.views_count || 0,
-        category: item.category
-      }));
+      const { error } = await supabase.from('producers').upsert(row, { onConflict: 'id' });
+      return !error;
     } catch {
-      return StorageService.getProducers();
+      return false;
     }
   },
 
   async update(id: string, updates: Partial<Producer>): Promise<boolean> {
+    const all = StorageService.getProducers();
+    const existing = all.find(p => p.id === id);
+    if (existing) {
+      StorageService.saveProducer({ ...existing, ...updates });
+    }
+
     if (!supabase) {
-      const all = StorageService.getProducers();
-      const existing = all.find(p => p.id === id);
-      if (existing) {
-        StorageService.saveProducer({ ...existing, ...updates });
-      }
       return true;
     }
 
     try {
       const updateData: any = {};
-      if (updates.name) updateData.name = updates.name;
-      if (updates.farmName) updateData.farm_name = updates.farmName;
-      if (updates.bio) updateData.bio = updates.bio;
-      if (updates.story) updateData.story = updates.story;
-      if (updates.phone) updateData.phone = updates.phone;
-      if (updates.whatsapp) updateData.whatsapp = updates.whatsapp;
-      if (updates.avatar) updateData.avatar = updates.avatar;
-      if (updates.coverImage) updateData.cover_image = updates.coverImage;
-      if (updates.location?.address) updateData.address = updates.location.address;
-      if (updates.location?.neighborhood) updateData.neighborhood = updates.location.neighborhood;
+      if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.farmName !== undefined) updateData.farm_name = updates.farmName;
+      if (updates.tagline !== undefined) updateData.tagline = updates.tagline;
+      if (updates.bio !== undefined) updateData.bio = updates.bio;
+      if (updates.story !== undefined) updateData.story = updates.story;
+      if (updates.specialty !== undefined) updateData.specialty = updates.specialty;
+      if (updates.category !== undefined) updateData.category = updates.category;
+      if (updates.phone !== undefined) updateData.phone = updates.phone;
+      if (updates.whatsapp !== undefined) updateData.whatsapp = updates.whatsapp;
+      if (updates.avatar !== undefined) updateData.avatar = updates.avatar;
+      if (updates.coverImage !== undefined) updateData.cover_image = updates.coverImage;
+      if (updates.galleryImages !== undefined) updateData.gallery_images = updates.galleryImages;
+      if (updates.location?.address !== undefined) updateData.address = updates.location.address;
+      if (updates.location?.neighborhood !== undefined) updateData.neighborhood = updates.location.neighborhood;
+      if (updates.location?.city !== undefined) updateData.city = updates.location.city;
+      if (updates.location?.state !== undefined) updateData.state = updates.location.state;
 
       const { error } = await supabase
         .from('producers')
@@ -242,8 +476,25 @@ export const producersService = {
 // ==============================================================================
 export const productsService = {
   async getAll(): Promise<Product[]> {
+    const localProducts = StorageService.getProducts();
     if (!supabase) {
-      return StorageService.getProducts();
+      try {
+        const resp = await fetch('/api/products');
+        if (resp.ok) {
+          const apiProds = await resp.json();
+          if (Array.isArray(apiProds) && apiProds.length > 0) {
+            const map = new Map<string, Product>();
+            for (const p of localProducts) map.set(p.id, p);
+            for (const p of apiProds) if (p?.id) map.set(p.id, p);
+            const merged = Array.from(map.values());
+            StorageService.setProducts(merged);
+            return merged;
+          }
+        }
+      } catch {
+        // ignore
+      }
+      return localProducts;
     }
 
     try {
@@ -253,10 +504,10 @@ export const productsService = {
         .order('created_at', { ascending: false });
 
       if (error || !data) {
-        return StorageService.getProducts();
+        return localProducts;
       }
 
-      return data.map((item: any) => ({
+      const mapped = data.map((item: any) => ({
         id: item.id,
         producerId: item.producer_id,
         producerName: item.producer_name,
@@ -280,8 +531,12 @@ export const productsService = {
         clicksCount: Number(item.clicks_count || 0),
         ordersCount: Number(item.orders_count || 0)
       }));
+      if (mapped.length > 0) {
+        StorageService.setProducts(mapped);
+      }
+      return mapped.length > 0 ? mapped : localProducts;
     } catch {
-      return StorageService.getProducts();
+      return localProducts;
     }
   },
 

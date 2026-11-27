@@ -27,6 +27,7 @@ const FAVORITES_KEY = 'coneqta_favorites_v3';
 const CURRENT_USER_KEY = 'coneqta_current_user_v3';
 const USER_ADDRESS_KEY = 'coneqta_user_address_v3';
 const PURGE_DEMO_KEY = 'coneqta_purged_demo_v2';
+const DELETED_USERS_KEY = 'coneqta_deleted_users_v1';
 
 export interface UserAddressConfig {
   label: string;
@@ -55,6 +56,70 @@ export const DEFAULT_USER_LOCATION: UserLocation = {
   neighborhood: 'Centro',
   maxDistanceKm: 30,
 };
+
+export function buildProducerFromUser(user: AppUser): Producer {
+  const producerId = user.producerId || user.farmId || `prod_${user.id}`;
+  const cleanPhone = user.phone || '';
+  const numericPhone = cleanPhone.replace(/\D/g, '');
+  const neighborhood = user.neighborhood || 'Queimados';
+
+  return {
+    id: producerId,
+    name: user.name,
+    farmName: user.farmName || `Loja de ${user.name}`,
+    tagline: `Produtos e serviços locais em ${neighborhood}`,
+    bio: `Empreendedor(a) local de ${neighborhood}, Queimados.`,
+    story: 'Bem-vindo ao meu espaço no ConeQta! Confira nossos produtos, serviços e avaliações.',
+    avatar: user.avatar || '',
+    avatarBgColor: user.avatarBgColor || '#4E553D',
+    coverImage: '',
+    coverBgColor: user.coverBgColor || '#1F6B38',
+    galleryImages: [],
+    location: {
+      city: user.city || 'Queimados',
+      state: 'RJ',
+      distanceKm: 1.0,
+      neighborhood,
+      address: `${neighborhood}, Queimados - RJ`,
+    },
+    rating: 0,
+    reviewCount: 0,
+    certifications: [],
+    phone: cleanPhone,
+    whatsapp: numericPhone
+      ? numericPhone.startsWith('55')
+        ? numericPhone
+        : `55${numericPhone}`
+      : '',
+    establishedYear: new Date().getFullYear(),
+    harvestDays: ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'],
+    deliveryMethods: ['Retirada no Local'],
+    specialty: 'Comércio Local',
+    viewsCount: 0,
+    category: 'outros',
+  };
+}
+
+export function reconcileProducersWithUsers(producers: Producer[], users: AppUser[]): Producer[] {
+  const fakeIds = new Set(['prod_vivian', 'prod_leo']);
+  const byId = new Map<string, Producer>();
+
+  for (const p of producers) {
+    if (!p?.id || fakeIds.has(p.id)) continue;
+    byId.set(p.id, p);
+  }
+
+  for (const u of users) {
+    if (u.role !== 'producer') continue;
+    const expectedId = u.producerId || u.farmId || `prod_${u.id}`;
+    if (fakeIds.has(expectedId)) continue;
+    if (!byId.has(expectedId) && !byId.has(u.id)) {
+      byId.set(expectedId, buildProducerFromUser(u));
+    }
+  }
+
+  return Array.from(byId.values());
+}
 
 export class StorageService {
   private static purgeDemoMockDataOnce(): void {
@@ -160,14 +225,24 @@ export class StorageService {
     this.purgeDemoMockDataOnce();
     try {
       const data = localStorage.getItem(PRODUCERS_KEY);
-      if (!data) {
-        localStorage.setItem(PRODUCERS_KEY, JSON.stringify(INITIAL_PRODUCERS));
-        return INITIAL_PRODUCERS;
+      const parsed: Producer[] = data ? JSON.parse(data) : INITIAL_PRODUCERS;
+      const usersRaw = localStorage.getItem(USERS_KEY);
+      const users: AppUser[] = usersRaw ? JSON.parse(usersRaw) : [];
+      const reconciled = reconcileProducersWithUsers(parsed, users);
+      if (!data || reconciled.length !== parsed.length) {
+        localStorage.setItem(PRODUCERS_KEY, JSON.stringify(reconciled));
       }
-      return JSON.parse(data);
+      return reconciled;
     } catch {
       return INITIAL_PRODUCERS;
     }
+  }
+
+  static setProducers(producers: Producer[]): void {
+    const fakeIds = new Set(['prod_vivian', 'prod_leo']);
+    const cleaned = producers.filter((p) => p?.id && !fakeIds.has(p.id));
+    localStorage.setItem(PRODUCERS_KEY, JSON.stringify(cleaned));
+    window.dispatchEvent(new Event('coneqta_storage_updated'));
   }
 
   static saveProducer(producer: Producer): void {
@@ -189,6 +264,28 @@ export class StorageService {
     }).catch(err => console.warn('API sync warning:', err));
   }
 
+  static deleteProducer(producerId: string): void {
+    const producers = this.getProducers().filter((p) => p.id !== producerId);
+    localStorage.setItem(PRODUCERS_KEY, JSON.stringify(producers));
+
+    const products = this.getProducts().filter((p) => p.producerId !== producerId);
+    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
+
+    const stories = this.getStories(true).filter((s) => s.producerId !== producerId);
+    localStorage.setItem(STORIES_KEY, JSON.stringify(stories));
+
+    const reviews = this.getReviews().filter((r) => r.producerId !== producerId);
+    localStorage.setItem(REVIEWS_KEY, JSON.stringify(reviews));
+
+    window.dispatchEvent(new Event('coneqta_storage_updated'));
+    window.dispatchEvent(new Event('coneqta_stories_updated'));
+    window.dispatchEvent(new Event('coneqta_reviews_updated'));
+
+    fetch(`/api/producers/${producerId}`, {
+      method: 'DELETE',
+    }).catch(err => console.warn('API delete producer warning:', err));
+  }
+
   // Products
   static getProducts(): Product[] {
     try {
@@ -201,6 +298,11 @@ export class StorageService {
     } catch {
       return INITIAL_PRODUCTS;
     }
+  }
+
+  static setProducts(products: Product[]): void {
+    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
+    window.dispatchEvent(new Event('coneqta_storage_updated'));
   }
 
   static saveProduct(product: Product): void {
@@ -311,18 +413,29 @@ export class StorageService {
   }
 
   // Users
+  private static getDeletedUserIds(): Set<string> {
+    try {
+      const raw = localStorage.getItem(DELETED_USERS_KEY);
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
   static getUsers(): AppUser[] {
     this.purgeDemoMockDataOnce();
+    const deletedIds = this.getDeletedUserIds();
     try {
       const data = localStorage.getItem(USERS_KEY);
       if (!data) {
-        localStorage.setItem(USERS_KEY, JSON.stringify(INITIAL_USERS));
-        return INITIAL_USERS;
+        const initial = INITIAL_USERS.filter(u => !deletedIds.has(u.id));
+        localStorage.setItem(USERS_KEY, JSON.stringify(initial));
+        return initial;
       }
       const existing: AppUser[] = JSON.parse(data);
       let updated = false;
       for (const defUser of INITIAL_USERS) {
-        if (!existing.some(u => u.id === defUser.id)) {
+        if (!deletedIds.has(defUser.id) && !existing.some(u => u.id === defUser.id)) {
           existing.push(defUser);
           updated = true;
         }
@@ -332,11 +445,18 @@ export class StorageService {
       }
       return existing;
     } catch {
-      return INITIAL_USERS;
+      return INITIAL_USERS.filter(u => !deletedIds.has(u.id));
     }
   }
 
   static saveUser(user: AppUser): void {
+    // If re-registering/saving, ensure ID is not marked deleted
+    const deletedIds = this.getDeletedUserIds();
+    if (deletedIds.has(user.id)) {
+      deletedIds.delete(user.id);
+      localStorage.setItem(DELETED_USERS_KEY, JSON.stringify(Array.from(deletedIds)));
+    }
+
     const users = this.getUsers();
     const idx = users.findIndex(u => u.id === user.id);
     if (idx >= 0) {
@@ -346,6 +466,45 @@ export class StorageService {
     }
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
     window.dispatchEvent(new Event('coneqta_storage_updated'));
+
+    fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(user),
+    }).catch(err => console.warn('API users sync warning:', err));
+  }
+
+  static deleteUser(userId: string): void {
+    const users = this.getUsers();
+    const targetUser = users.find(u => u.id === userId);
+    const remainingUsers = users.filter(u => u.id !== userId);
+
+    // Record deletion before clearing producer so reconcileProducersWithUsers does not re-create it
+    const deletedIds = this.getDeletedUserIds();
+    deletedIds.add(userId);
+    localStorage.setItem(DELETED_USERS_KEY, JSON.stringify(Array.from(deletedIds)));
+    localStorage.setItem(USERS_KEY, JSON.stringify(remainingUsers));
+
+    if (targetUser && targetUser.role === 'producer') {
+      const producerIdsToRemove = new Set<string>([
+        targetUser.producerId || targetUser.farmId || `prod_${targetUser.id}`,
+        targetUser.id,
+      ]);
+      producerIdsToRemove.forEach((pid) => {
+        this.deleteProducer(pid);
+      });
+    }
+
+    const active = this.getCurrentUser();
+    if (active && active.id === userId) {
+      this.logout();
+    }
+
+    window.dispatchEvent(new Event('coneqta_storage_updated'));
+
+    fetch(`/api/users/${userId}`, {
+      method: 'DELETE',
+    }).catch(err => console.warn('API delete user warning:', err));
   }
 
   // Seals

@@ -29,12 +29,14 @@ import {
   Film,
   Flag,
   Camera,
-  Upload
+  Upload,
+  Trash2
 } from 'lucide-react';
 import { Producer, Product, AppUser, ReviewItem, ProducerStory } from '../types';
 import { StorageService } from '../services/storage';
 import { StoryViewerModal } from './StoryViewerModal';
 import { StoryPostModal } from './StoryPostModal';
+import { AvatarDisplay, CoverDisplay, ColorPalettePicker } from './ProfileMedia';
 
 interface EntrepreneurProfileModalProps {
   producer: Producer | null;
@@ -75,10 +77,14 @@ export const EntrepreneurProfileModal: React.FC<EntrepreneurProfileModalProps> =
   const [whatsapp, setWhatsapp] = useState(producer.whatsapp);
   const [neighborhood, setNeighborhood] = useState(producer.location.neighborhood || '');
   const [address, setAddress] = useState(producer.location.address || '');
-  const [coverImage, setCoverImage] = useState(producer.coverImage);
-  const [avatar, setAvatar] = useState(producer.avatar);
-  const [newPhotoUrl, setNewPhotoUrl] = useState('');
-  const [photosList, setPhotosList] = useState<string[]>(producer.galleryImages || [producer.coverImage]);
+  const [coverImage, setCoverImage] = useState(producer.coverImage || '');
+  const [coverBgColor, setCoverBgColor] = useState(producer.coverBgColor || '#1F6B38');
+  const [avatar, setAvatar] = useState(producer.avatar || '');
+  const [avatarBgColor, setAvatarBgColor] = useState(producer.avatarBgColor || '#4E553D');
+  const [photosList, setPhotosList] = useState<string[]>((producer.galleryImages || []).filter(Boolean));
+  const galleryUploadInputRef = React.useRef<HTMLInputElement>(null);
+  const modalAvatarInputRef = React.useRef<HTMLInputElement>(null);
+  const modalCoverInputRef = React.useRef<HTMLInputElement>(null);
 
   // Reviews state
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
@@ -135,7 +141,9 @@ export const EntrepreneurProfileModal: React.FC<EntrepreneurProfileModalProps> =
       phone,
       whatsapp,
       coverImage,
+      coverBgColor,
       avatar,
+      avatarBgColor,
       galleryImages: photosList,
       location: {
         ...producer.location,
@@ -147,14 +155,42 @@ export const EntrepreneurProfileModal: React.FC<EntrepreneurProfileModalProps> =
     setIsEditing(false);
   };
 
-  const handleAddPhoto = () => {
-    if (!newPhotoUrl.trim()) return;
-    setPhotosList([...photosList, newPhotoUrl.trim()]);
-    setNewPhotoUrl('');
+  const handleGalleryDeviceUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    (Array.from(files) as File[]).forEach((file) => {
+      if (file.size > 8 * 1024 * 1024) return;
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          const updatedList = [...photosList, reader.result];
+          setPhotosList(updatedList);
+          onSaveProducer({ ...producer, galleryImages: updatedList });
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleModalMediaUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'avatar' | 'cover') => {
+    const file = e.target.files?.[0];
+    if (!file || file.size > 8 * 1024 * 1024) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        if (target === 'avatar') setAvatar(reader.result);
+        else setCoverImage(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleRemovePhoto = (idx: number) => {
-    setPhotosList(photosList.filter((_, i) => i !== idx));
+    const updatedList = photosList.filter((_, i) => i !== idx);
+    setPhotosList(updatedList);
+    onSaveProducer({ ...producer, galleryImages: updatedList });
   };
 
   const handleReviewPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -182,7 +218,7 @@ export const EntrepreneurProfileModal: React.FC<EntrepreneurProfileModalProps> =
     const review: ReviewItem = {
       id: `rev_${Date.now()}`,
       authorName: reviewerName.trim() || 'Morador de Queimados',
-      authorAvatar: currentUser?.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80',
+      authorAvatar: currentUser?.avatar || '',
       producerId: producer.id,
       producerName: producer.farmName,
       targetType: 'store',
@@ -223,10 +259,10 @@ export const EntrepreneurProfileModal: React.FC<EntrepreneurProfileModalProps> =
       >
         {/* Header Cover Banner */}
         <div className="relative h-48 sm:h-56 w-full bg-stone-800 shrink-0">
-          <img
+          <CoverDisplay
             src={isEditing ? coverImage : producer.coverImage}
+            bgColor={isEditing ? coverBgColor : producer.coverBgColor}
             alt={producer.farmName}
-            referrerPolicy="no-referrer"
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-stone-900/90 via-stone-900/30 to-transparent" />
@@ -262,7 +298,7 @@ export const EntrepreneurProfileModal: React.FC<EntrepreneurProfileModalProps> =
               className="absolute top-3.5 left-3.5 px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition-all z-20 cursor-pointer"
             >
               <Edit3 className="w-3.5 h-3.5" />
-              <span>{isEditing ? 'Cancelar Edição' : 'Editar Meu Perfil'}</span>
+              <span>{isEditing ? 'Cancelar Edição' : 'Editar Perfil'}</span>
             </button>
           )}
 
@@ -270,11 +306,12 @@ export const EntrepreneurProfileModal: React.FC<EntrepreneurProfileModalProps> =
           <div className="absolute bottom-3 left-4 right-4 flex items-end justify-between text-white z-10">
             <div className="flex items-center gap-3">
               <div className="relative">
-                <img
+                <AvatarDisplay
                   src={isEditing ? avatar : producer.avatar}
-                  alt={producer.name}
-                  referrerPolicy="no-referrer"
-                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-white shadow-md"
+                  bgColor={isEditing ? avatarBgColor : producer.avatarBgColor}
+                  name={producer.name || producer.farmName}
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border-2 border-white shadow-md"
+                  textClassName="text-xl sm:text-2xl"
                 />
                 {stories.length > 0 && (
                   <div 
@@ -496,6 +533,85 @@ export const EntrepreneurProfileModal: React.FC<EntrepreneurProfileModalProps> =
                     </div>
                   </div>
 
+                  {/* Avatar & Cover upload/color controls inside modal edit */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-stone-50 rounded-2xl border border-stone-200">
+                    <div className="space-y-2">
+                      <span className="block text-xs font-bold text-stone-700">Foto de Perfil</span>
+                      <input
+                        type="file"
+                        ref={modalAvatarInputRef}
+                        accept="image/*"
+                        onChange={(e) => handleModalMediaUpload(e, 'avatar')}
+                        className="hidden"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => modalAvatarInputRef.current?.click()}
+                          className="px-3 py-1.5 bg-white border border-stone-200 hover:bg-stone-100 rounded-xl text-xs font-bold text-stone-700 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Carregar do Aparelho</span>
+                        </button>
+                        {avatar && (
+                          <button
+                            type="button"
+                            onClick={() => setAvatar('')}
+                            className="px-3 py-1.5 bg-red-50 hover:bg-red-100 rounded-xl text-xs font-bold text-red-700 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Remover</span>
+                          </button>
+                        )}
+                      </div>
+                      {!avatar && (
+                        <ColorPalettePicker
+                          label="Cor de Fundo do Perfil"
+                          selectedColor={avatarBgColor}
+                          onChange={setAvatarBgColor}
+                        />
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <span className="block text-xs font-bold text-stone-700">Foto de Capa</span>
+                      <input
+                        type="file"
+                        ref={modalCoverInputRef}
+                        accept="image/*"
+                        onChange={(e) => handleModalMediaUpload(e, 'cover')}
+                        className="hidden"
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => modalCoverInputRef.current?.click()}
+                          className="px-3 py-1.5 bg-white border border-stone-200 hover:bg-stone-100 rounded-xl text-xs font-bold text-stone-700 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Carregar do Aparelho</span>
+                        </button>
+                        {coverImage && (
+                          <button
+                            type="button"
+                            onClick={() => setCoverImage('')}
+                            className="px-3 py-1.5 bg-red-50 hover:bg-red-100 rounded-xl text-xs font-bold text-red-700 flex items-center gap-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Remover</span>
+                          </button>
+                        )}
+                      </div>
+                      {!coverImage && (
+                        <ColorPalettePicker
+                          label="Cor de Fundo da Capa"
+                          selectedColor={coverBgColor}
+                          onChange={setCoverBgColor}
+                        />
+                      )}
+                    </div>
+                  </div>
+
                   <div className="flex justify-end gap-3 pt-3">
                     <button
                       type="button"
@@ -593,25 +709,27 @@ export const EntrepreneurProfileModal: React.FC<EntrepreneurProfileModalProps> =
           {activeTab === 'fotos' && (
             <div className="space-y-6">
               {isOwner && (
-                <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl">
-                  <h4 className="text-xs font-bold text-emerald-900 uppercase tracking-wider mb-2">Adicionar Foto à Galeria</h4>
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      placeholder="Cole o link da foto (URL)..."
-                      value={newPhotoUrl}
-                      onChange={(e) => setNewPhotoUrl(e.target.value)}
-                      className="flex-1 p-2 border border-emerald-300 rounded-xl text-sm bg-white"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddPhoto}
-                      className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Adicionar</span>
-                    </button>
+                <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Adicionar Foto à Galeria</h4>
+                    <p className="text-[11px] text-emerald-800/80">Selecione fotos diretamente do seu aparelho.</p>
                   </div>
+                  <input
+                    type="file"
+                    ref={galleryUploadInputRef}
+                    accept="image/*"
+                    multiple
+                    onChange={handleGalleryDeviceUpload}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => galleryUploadInputRef.current?.click()}
+                    className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Carregar Foto do Aparelho</span>
+                  </button>
                 </div>
               )}
 
@@ -894,11 +1012,12 @@ export const EntrepreneurProfileModal: React.FC<EntrepreneurProfileModalProps> =
                     >
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <div className="flex items-center gap-2.5">
-                          <img
-                            src={rev.authorAvatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80'}
-                            alt={rev.authorName}
-                            referrerPolicy="no-referrer"
-                            className="w-8 h-8 rounded-full object-cover bg-emerald-700"
+                          <AvatarDisplay
+                            src={rev.authorAvatar}
+                            bgColor="#4E553D"
+                            name={rev.authorName}
+                            className="w-8 h-8 rounded-full shrink-0"
+                            textClassName="text-xs"
                           />
                           <div>
                             <span className="font-bold text-stone-900 text-xs block">{rev.authorName}</span>
