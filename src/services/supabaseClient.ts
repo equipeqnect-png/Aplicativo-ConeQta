@@ -66,8 +66,11 @@ function mapSupabaseProfileToAppUser(prof: any, fallback: Partial<AppUser> = {})
 // ==============================================================================
 function translateSupabaseAuthError(message?: string): string {
   const msg = String(message || '').toLowerCase();
-  if (msg.includes('already registered') || msg.includes('already exists')) {
-    return 'Este e-mail já está cadastrado no ConeQta. Faça login para acessar sua conta.';
+  if (msg.includes('already registered') || msg.includes('already exists') || msg.includes('email_exists')) {
+    return 'Este e-mail já está cadastrado no ConeQta. Faça login na aba "Fazer Login".';
+  }
+  if (msg.includes('is invalid') || msg.includes('invalid email') || msg.includes('unable to validate email')) {
+    return 'Endereço de e-mail inválido para cadastro. Use um e-mail real válido (ex: seunome@gmail.com).';
   }
   if (msg.includes('email not confirmed')) {
     return 'Seu e-mail ainda aguarda confirmação no Supabase. Desative "Confirm email" em Authentication > Providers > Email no painel do Supabase ou confirme pelo link enviado.';
@@ -78,11 +81,14 @@ function translateSupabaseAuthError(message?: string): string {
   if (msg.includes('database error saving new user')) {
     return 'Erro no banco de dados Supabase ao criar o perfil. Execute o script supabase/schema.sql completo no SQL Editor do Supabase.';
   }
-  if (msg.includes('signups not allowed')) {
+  if (msg.includes('signups not allowed') || msg.includes('signup_disabled')) {
     return 'Novos cadastros estão desativados no painel Authentication do Supabase.';
   }
-  if (msg.includes('rate limit') || msg.includes('only request this after')) {
-    return 'Muitas tentativas seguidas no Supabase. Aguarde alguns segundos e tente novamente.';
+  if (msg.includes('rate limit') || msg.includes('only request this after') || msg.includes('too many requests')) {
+    return 'Muitas tentativas seguidas. Aguarde alguns segundos e tente novamente.';
+  }
+  if (msg.includes('failed to fetch') || msg.includes('network')) {
+    return 'Falha de conexão com o servidor de autenticação. Verifique sua internet ou as variáveis do Supabase.';
   }
   if (msg.includes('password')) {
     return 'A senha não atende aos requisitos mínimos (mínimo de 6 caracteres).';

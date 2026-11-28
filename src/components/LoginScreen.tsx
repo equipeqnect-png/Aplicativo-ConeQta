@@ -332,6 +332,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       }
     } catch (err: any) {
       setRegError(err?.message || 'Erro ao criar conta. Tente novamente.');
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -762,6 +763,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       A senha deve conter no mínimo 6 caracteres para garantir a segurança da sua conta.
                     </p>
                   </div>
+
+                  {regError && (
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
+                      <span>{regError}</span>
+                    </div>
+                  )}
 
                   {/* Submit Button */}
                   <button
