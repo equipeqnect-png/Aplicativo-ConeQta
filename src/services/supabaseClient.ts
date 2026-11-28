@@ -2,10 +2,14 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Producer, Product, Order, ReviewItem, ProducerStory, StoryComment, ChatMessage, AppUser, SealItem, CategoryDef, AppFeedback } from '../types';
 import { StorageService, buildProducerFromUser, reconcileProducersWithUsers } from './storage';
 
-// Obtém as variáveis de ambiente Vite (ou vazias se ainda não configuradas pelo usuário)
-const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+// Obtém as variáveis de ambiente Vite ou a configuração pública injetada em runtime pelo servidor publicado
+const runtimePublicConfig =
+  typeof window !== 'undefined'
+    ? (window as { __CONEQTA_PUBLIC_CONFIG__?: { url?: string; anonKey?: string } }).__CONEQTA_PUBLIC_CONFIG__
+    : undefined;
+const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL || runtimePublicConfig?.url || '').trim();
 const supabaseUrl = rawSupabaseUrl.replace(/\/rest\/v1\/?$/i, '').replace(/\/+$/, '');
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || runtimePublicConfig?.anonKey || '').trim();
 
 export const isSupabaseConfigured = (): boolean => {
   const lowerUrl = supabaseUrl.toLowerCase();

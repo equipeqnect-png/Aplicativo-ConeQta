@@ -702,9 +702,22 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, { index: false }));
     app.get("*", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      try {
+        let html = fs.readFileSync(indexPath, "utf-8");
+        const publicConfig = {
+          url: (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "").trim(),
+          anonKey: (process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "").trim(),
+        };
+        const safeJson = JSON.stringify(publicConfig).replace(/</g, "\\u003c");
+        const configScript = `<script>window.__CONEQTA_PUBLIC_CONFIG__ = ${safeJson};</script>`;
+        html = html.replace("</head>", `${configScript}\n  </head>`);
+        res.type("html").send(html);
+      } catch {
+        res.sendFile(indexPath);
+      }
     });
   }
 
